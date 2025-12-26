@@ -1,0 +1,15 @@
+<?php
+
+class site_controller
+{
+    public function display($info)
+    {
+        $alpineControllers = ['authController', 'statsController', 'actionsController', 'usersController'];
+
+        include(constant("cRootServer") . "ui/common/head.php");
+        include(constant("cRootServer") . "ui/common/header.php");
+        include(constant("cRootServer") . "ui/page/home.php");
+        include(constant("cRootServer") . "ui/common/footer.php");
+        include(constant("cRootServer") . "ui/common/foot.php");
+    }
+}

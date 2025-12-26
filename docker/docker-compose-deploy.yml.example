@@ -1,0 +1,213 @@
+version: '3.8'
+
+# ============================================================
+# 🚀 NEXO FRAMEWORK - DEPLOY MANUAL VIA (EXEMPLO)
+# ============================================================
+# Este arquivo é um EXEMPLO e usa variáveis de ambiente.
+# Crie um arquivo .env ao lado deste compose com os valores.
+# As variáveis com default (:-valor) podem ser mantidas.
+# 
+# ⚠️ PRÉ-REQUISITOS:
+# - MySQL já rodando na rede externa (${EXTERNAL_NETWORK})
+# - Kafka já rodando na rede externa (${EXTERNAL_NETWORK})
+# 
+# Esta stack cria apenas: App (PHP + Apache), Redis e Email Worker
+# ============================================================
+
+# -----------------------------------------------------------------
+# PLACEHOLDER VARIABLES (EXPLICAÇÃO)
+# Substitua os valores em CAIXA ALTA abaixo pelo seu ambiente.
+# Exemplos e recomendações:
+# - SUA_IMAGE_APP: imagem docker contendo PHP + extensões (ex: myrepo/nexofw-app:latest).
+# - SUA_REDE_EXTERNA: nome da rede Docker overlay onde estão MySQL e Kafka (ex: dotskynet).
+# - SEU_DOMINIO_SITE: domínio público do site usado pelo Traefik (ex: dotsky.com.br).
+# - SEU_DOMINIO_MANAGER: domínio do painel/manager (ex: manager.dotsky.com.br).
+# - /opt/nexo/...: caminhos host onde você fará o deploy via git clone.
+# - SEU_HOST_MYSQL: nome do serviço ou host do MySQL dentro da rede externa (ex: mysql).
+# - SEU_BANCO: nome do banco de dados (ex: nexo_dotsky).
+# - SEU_USUARIO: usuário do banco de dados.
+# - SUA_SENHA: senha do banco (em produção prefira usar Docker secrets ou um secret manager).
+# - SEU_KAFKA_BROKER: endereço do broker Kafka (host ou service) sem porta ou com :porta (ex: kafka_broker ou kafka_broker:9092).
+# - SEU_TOPICO_EMAIL: tópico Kafka usado pelo worker (ex: nexo_emails_site).
+#
+# Observações de segurança e operação:
+# - Substitua todas as ocorrências em CAIXA ALTA antes de subir a stack.
+# - Para produção, considere usar Docker secrets para senhas e credenciais.
+# - Certifique-se de que a rede externa (SUA_REDE_EXTERNA) exista e seja do tipo overlay.
+# -----------------------------------------------------------------
+services:
+  # ========================================
+  # 📦 PHP Application Server (Site + Manager)
+  # ========================================
+  app:
+    image: SUA_IMAGE_APP  # Imagem customizada com extensões pré-instaladas
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+      labels:
+        # Traefik: Roteamento para Site
+        - "traefik.enable=true"
+        - "traefik.docker.network=SUA_REDE_EXTERNA"
+        
+        # Site (ex.: example.com)
+        - "traefik.http.routers.nexo-site.rule=Host(`SEU_DOMINIO_SITE`)"
+        - "traefik.http.routers.nexo-site.entrypoints=websecure"
+        - "traefik.http.routers.nexo-site.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.nexo-site.service=nexo-site"
+        - "traefik.http.services.nexo-site.loadbalancer.server.port=80"
+        
+        # Manager (ex.: manager.example.com)
+        - "traefik.http.routers.nexo-manager.rule=Host(`SEU_DOMINIO_MANAGER`)"
+        - "traefik.http.routers.nexo-manager.entrypoints=websecure"
+        - "traefik.http.routers.nexo-manager.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.nexo-manager.service=nexo-manager"
+        - "traefik.http.services.nexo-manager.loadbalancer.server.port=8080"
+    
+    volumes:
+      # Arquivos do Site
+      - /opt/nexo/site:/var/www/site:rw
+      
+      # Arquivos do Manager
+      - /opt/nexo/manager:/var/www/manager:rw
+      
+      # Logs compartilhados
+      - /opt/nexo/logs/apache2:/var/log/apache2:rw
+    
+    environment:
+      # MySQL
+      MYSQL_HOST: SEU_HOST_MYSQL
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: SEU_BANCO
+      MYSQL_USER: SEU_USUARIO
+      MYSQL_PASSWORD: SUA_SENHA
+      # Redis (nesta stack)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Kafka (serviço externo na rede SUA_REDE_EXTERNA)
+      KAFKA_BROKER: SEU_KAFKA_BROKER:9092
+      KAFKA_TOPIC_EMAIL: SEU_TOPICO_EMAIL
+      # Timezone
+      TZ: America/Sao_Paulo
+    
+    networks:
+      - nexo-network
+      - SUA_REDE_EXTERNA  # Conecta à rede onde estão MySQL e Kafka
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ========================================
+  #  Redis Cache
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    
+    volumes:
+      - redis-data:/data
+    
+    networks:
+      - nexo-network
+      - SUA_REDE_EXTERNA  # Conecta à rede para acessar outros serviços se necessário
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ========================================
+  # 👷 Email Worker (Kafka Consumer)
+  # ========================================
+  email_worker:
+    image: SUA_IMAGE_APP  # Mesma imagem customizada
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    
+    volumes:
+      # Worker precisa acessar o código do site
+      - /opt/nexo/site:/var/www/site:ro
+    
+    environment:
+      # MySQL
+      MYSQL_HOST: SEU_HOST_MYSQL
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: SEU_BANCO
+      MYSQL_USER: SEU_USUARIO
+      MYSQL_PASSWORD: SUA_SENHA
+      # Redis (nesta stack)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Kafka (serviço externo)
+      KAFKA_BROKER: SEU_KAFKA_BROKER:9092
+      KAFKA_TOPIC_EMAIL: SEU_TOPICO_EMAIL
+      TZ: America/Sao_Paulo
+    
+    networks:
+      - nexo-network
+      - SUA_REDE_EXTERNA  # Conecta à rede onde estão MySQL e Kafka
+    
+    # Sobrescrever CMD padrão (apache) para rodar worker
+    entrypoint: []
+    command: ["php", "/var/www/site/cgi-bin/kafka_email_worker.php"]
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f kafka_email_worker.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# ========================================
+# 🌐 Networks
+# ========================================
+networks:
+  nexo-network:
+    driver: overlay
+    attachable: true
+  SUA_REDE_EXTERNA:
+    external: true
+
+# ========================================
+# 💾 Volumes
+# ========================================
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+  kafka-data:
+    driver: local

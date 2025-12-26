@@ -1,0 +1,306 @@
+<?php
+/**
+ * Kernel - Arquivo de Configuração Global
+ * PHP 8.3+ | MySQL 8.0 | Redis 7.2
+ * 
+ * Este arquivo contém as configurações sensíveis da aplicação
+ * NÃO VERSIONAR ESTE ARQUIVO NO GIT (incluído no .gitignore)
+ * 
+ * @package Nexo
+ * @version 1.0.0
+ */
+
+// ============================================================================
+// CONFIGURAÇÕES GLOBAIS DO PHP
+// ============================================================================
+
+/**
+ * Timezone da aplicação
+ */
+date_default_timezone_set('America/Sao_Paulo');
+
+/**
+ * Configurações de upload e limites
+ */
+ini_set('post_max_size', '4096M');
+ini_set('upload_max_filesize', '4096M');
+ini_set('default_charset', 'UTF-8');
+
+/**
+ * Paginação padrão para listagens
+ */
+define("cPaginate", 150);
+
+// ============================================================================
+// CONFIGURAÇÕES DO BANCO DE DADOS
+// ============================================================================
+
+/**
+ * Host do servidor MySQL
+ * Docker: IP do container mysql_nexo (172.29.0.2)
+ * Produção: localhost ou IP do servidor
+ */
+define("DB_HOST", "172.29.0.2");
+define("cHStr", DB_HOST);
+
+/**
+ * Nome do banco de dados
+ */
+define("DB_NAME", "mysql_nexo");
+define("cBancoStr", DB_NAME);
+
+/**
+ * Usuário do banco de dados
+ */
+define("DB_USER", "user_nexo");
+define("cUserStr", DB_USER);
+
+/**
+ * Senha do banco de dados
+ */
+define("DB_PASS", "123456");
+define("cPassStr", DB_PASS);
+
+/**
+ * Charset da conexão
+ */
+define("DB_CHARSET", "utf8mb4");
+
+/**
+ * Prefixo para tabelas (caso necessário)
+ */
+define("prefix_tables", "");
+
+// ============================================================================
+// CONFIGURAÇÕES DO REDIS
+// ============================================================================
+
+/**
+ * Host do servidor Redis
+ * Docker: IP do container redis_nexo (172.29.0.4)
+ * Produção: localhost ou IP do servidor
+ */
+define("REDIS_HOST", "172.29.0.4");
+
+/**
+ * Porta do servidor Redis (padrão: 6379)
+ */
+define("REDIS_PORT", 6379);
+
+/**
+ * Senha do Redis
+ * Definida no docker-compose.yml: nexo_redis_2024
+ */
+define("REDIS_PASSWORD", "nexo_redis_2024");
+
+/**
+ * Prefixo para as chaves do Redis (namespace)
+ * Útil para evitar conflitos entre diferentes aplicações
+ * Manager: 'nexo:manager:'
+ * Site: 'nexo:site:'
+ */
+define("REDIS_PREFIX", "nexo:site:");
+
+/**
+ * Número do database Redis (0-15)
+ * Permite separar dados por contexto
+ * 0 = Manager
+ * 1 = Site
+ * 2 = Sessões
+ */
+define("REDIS_DATABASE", 1);
+
+/**
+ * Habilitar/Desabilitar cache Redis
+ * true = cache ativo
+ * false = cache desabilitado (fallback para MySQL)
+ */
+define("REDIS_ENABLED", true);
+
+/**
+ * TTL padrão para cache (em segundos)
+ * 3600 = 1 hora
+ * 86400 = 1 dia
+ * 604800 = 1 semana
+ */
+define("REDIS_DEFAULT_TTL", 3600);
+
+// ============================================================================
+// CONFIGURAÇÕES DE EMAIL (SMTP)
+// ============================================================================
+
+/**
+ * Configurações do servidor SMTP para envio de e-mails
+ */
+define("mail_from_name", "Nexo Site");
+define("mail_from_mail", "noreply@nexo.local");
+define("mail_from_host", "smtp.gmail.com");
+define("mail_from_port", "587");
+define("mail_from_user", "seu-email@gmail.com");
+define("mail_from_pwd", "sua-senha-app");
+
+// ============================================================================
+// CONFIGURAÇÕES DO KAFKA
+// ============================================================================
+
+/**
+ * Host do servidor Kafka
+ * Docker: Nome do container kafka_nexo
+ * Produção: localhost ou IP do servidor
+ */
+define("KAFKA_HOST", "kafka_nexo");
+
+/**
+ * Porta do servidor Kafka (padrão: 9092)
+ * 9092 = comunicação interna entre containers
+ * 29092 = acesso externo do host
+ */
+define("KAFKA_PORT", "9092");
+
+/**
+ * Tópico Kafka para fila de e-mails
+ * Usado pelo EmailProducer para enviar mensagens
+ * Usado pelo email_worker.php para consumir mensagens
+ */
+define("KAFKA_TOPIC_EMAIL", "emails");
+
+/**
+ * Grupo de consumidores Kafka
+ * Identifica o grupo de workers que consomem o tópico
+ */
+define("KAFKA_CONSUMER_GROUP", "email-worker-group");
+
+// ============================================================================
+// CONFIGURAÇÕES DA APLICAÇÃO
+// ============================================================================
+
+/**
+ * Chave da aplicação para sessões
+ * Usado como prefixo em $_SESSION[cAppKey]
+ */
+define("cAppKey", "nexo_site_session");
+
+/**
+ * Título da aplicação
+ */
+define("cTitle", "Nexo Framework");
+
+/**
+ * Caminho raiz no servidor
+ * Caminho relativo a partir do DOCUMENT_ROOT
+ */
+define("cAppRoot", "/");
+
+/**
+ * Caminho físico da raiz do servidor
+ * Calculado automaticamente a partir do DOCUMENT_ROOT
+ */
+define("cRootServer", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot")));
+
+/**
+ * Caminho físico da pasta app
+ * Manager: /var/www/nexo/manager/app
+ * Site: /var/www/nexo/site/app
+ */
+define("cRootServer_APP", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot") . "../app"));
+
+/**
+ * URL base da aplicação (Frontend)
+ * Desenvolvimento: http://nexo.local
+ * Produção: https://seudominio.com.br
+ */
+define("cFrontend", sprintf("http://%s%s", $_SERVER["HTTP_HOST"], constant("cAppRoot")));
+
+/**
+ * URL para pasta de assets (CSS, JS, imagens)
+ */
+define("cAssets", sprintf("%s%s", constant("cFrontend"), "assets/"));
+
+/**
+ * Ambiente de execução
+ * development = desenvolvimento (exibe erros)
+ * production = produção (oculta erros)
+ */
+define("APP_ENV", "development");
+
+/**
+ * Chave secreta para criptografia
+ * Gere uma chave forte: openssl rand -base64 32
+ */
+define("APP_SECRET_KEY", "CHANGE_THIS_TO_A_RANDOM_STRING_OF_32_CHARS");
+
+// ============================================================================
+// CONFIGURAÇÕES DE SESSÃO
+// ============================================================================
+
+/**
+ * Tempo de vida da sessão em segundos
+ * 7200 = 2 horas
+ */
+define("SESSION_LIFETIME", 7200);
+
+/**
+ * Usar Redis para armazenar sessões (recomendado)
+ * Se false, usa o handler padrão do PHP (arquivos)
+ */
+define("SESSION_USE_REDIS", false);
+
+// ============================================================================
+// CONFIGURAÇÕES DE UPLOAD
+// ============================================================================
+
+/**
+ * Diretório de upload (físico)
+ */
+define("UPLOAD_DIR", "/var/www/nexo/site/public_html/assets/upload/");
+
+/**
+ * Tamanho máximo de upload em MB
+ */
+define("UPLOAD_MAX_SIZE", 10);
+
+/**
+ * Tipos de arquivo permitidos
+ */
+define("UPLOAD_ALLOWED_TYPES", "jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx");
+
+// ============================================================================
+// CONFIGURAÇÕES DE LOG
+// ============================================================================
+
+/**
+ * Diretório de logs
+ */
+define("LOG_DIR", "/var/log/nexo/");
+
+/**
+ * Nível de log
+ * error, warning, info, debug
+ */
+define("LOG_LEVEL", "debug");
+
+// ============================================================================
+// INICIALIZAR REDIS (OPCIONAL)
+// ============================================================================
+
+/**
+ * Inicializar conexão global com Redis
+ * Disponível via $GLOBALS['redis']
+ */
+if (REDIS_ENABLED && class_exists('RedisCache')) {
+    try {
+        $GLOBALS['redis'] = RedisCache::getInstance();
+        
+        // Verificar conexão
+        if (!$GLOBALS['redis']->isConnected()) {
+            error_log('Redis não está conectado. Usando apenas MySQL.');
+        }
+    } catch (Exception $e) {
+        error_log('Erro ao inicializar Redis: ' . $e->getMessage());
+        $GLOBALS['redis'] = null;
+    }
+}
+
+// ============================================================================
+// FIM DAS CONFIGURAÇÕES
+// ============================================================================
