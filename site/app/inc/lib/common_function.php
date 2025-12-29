@@ -10,12 +10,12 @@ function m_autoload($name)
   if (strpos($name, '\\') !== false || strpos($name, 'Composer') !== false) {
     return false;
   }
-  
+
   // Verificar se constante necessária existe (modo CLI pode não ter)
   if (!defined('cRootServer_APP')) {
     return false;
   }
-  
+
   $file_name = false;
   try {
     foreach (["controller", "lib", "model"] as $dir) {
@@ -336,4 +336,33 @@ function html_notification_print()
     }
     unset($_SESSION["messages_app"]);
   }
+}
+
+/**
+ * Sanitiza uma string removendo acentos e caracteres indesejados.
+ * Se `$digitsOnly` for true, retorna apenas os dígitos (útil para CPF/telefone).
+ * Pode ser reutilizada para limpar outros campos antes de salvar ou comparar.
+ */
+function sanitize_string($value, $digitsOnly = false)
+{
+  if (!isset($value) || $value === null) {
+    return null;
+  }
+
+  // Garantir string
+  $value = trim((string)$value);
+
+  // Remover entidades HTML e acentos
+  $value = html_accents($value);
+  $value = remove_accents($value);
+
+  if ($digitsOnly) {
+    // Retornar apenas números
+    return preg_replace('/\D+/', '', $value);
+  }
+
+  // Remover caracteres não alfanuméricos (manter letras e números)
+  $value = preg_replace('/[^\p{L}0-9]+/u', '', $value);
+
+  return $value;
 }

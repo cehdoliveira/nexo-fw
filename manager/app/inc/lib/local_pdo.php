@@ -56,6 +56,7 @@ class local_pdo
 	{
 		return trim($this->pdo->quote($string), "'");
 	}
+
 	public function select($fields, $table, $options)
 	{
 		$res = $this->my_query(
@@ -114,6 +115,7 @@ class local_pdo
 			)
 		);
 	}
+
 	public function my_query($query)
 	{
 		try {
@@ -167,6 +169,7 @@ class local_pdo
 		}
 		return $obj;
 	}
+
 	public function fields_config($table)
 	{
 		$object = [];
@@ -208,6 +211,11 @@ class local_pdo
 
 	public function lastInsertId()
 	{
-		return $this->pdo->lastInsertId();
+		try {
+			return (int)$this->pdo->lastInsertId();
+		} catch (PDOException $e) {
+			error_log('local_pdo::lastInsertId Error: ' . $e->getMessage());
+			return 0;
+		}
 	}
 }

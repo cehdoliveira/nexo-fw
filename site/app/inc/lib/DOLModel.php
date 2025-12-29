@@ -3,7 +3,7 @@ class DOLModel extends rootOBJ
 {
 	protected $cache;
 	protected $cacheEnabled = false;
-	protected $cacheTTL = 3600; // 1 hora por padrão
+	protected $cacheTTL = 3600;
 
 	function __construct($table)
 	{
@@ -22,12 +22,11 @@ class DOLModel extends rootOBJ
 		}
 		$this->set_keys($keys);
 
-		// Inicializar cache Redis
 		if (defined('REDIS_ENABLED') && REDIS_ENABLED && class_exists('RedisCache')) {
 			try {
 				$this->cache = RedisCache::getInstance();
 				$this->cacheEnabled = $this->cache->isConnected();
-				
+
 				if (defined('REDIS_DEFAULT_TTL')) {
 					$this->cacheTTL = REDIS_DEFAULT_TTL;
 				}
@@ -40,36 +39,60 @@ class DOLModel extends rootOBJ
 
 	public function save()
 	{
-		if (isset($this->field)) {
-			try {
-				$this->con->beginTransaction();
+		if (!isset($this->field)) {
+			return false;
+		}
 
-				if (isset($this->field["idx"])) {
-					unset($this->field["idx"]);
-				}
-				$ff = implode(" , ", $this->field);
-				if (preg_match("/'/", $ff)) {
-					if (isset($this->filter) && is_array($this->filter) && count($this->filter) == 1 && ltrim(rtrim($this->filter[0])) == "active = 'yes'") {
-						unset($this->filter);
-					}
-					if (isset($this->filter) && is_array($this->filter)) {
-						$fi = " WHERE " . implode(" AND ", $this->filter) . " ";
-						$pa = isset($this->paginate) ? " LIMIT " . implode(" , ", $this->paginate) . " " : "";
-						$ff .= ", modified_at = NOW(), modified_by = '" . $this->con->real_escape_string(isset($_SESSION[constant("cAppKey")]["credential"]["idx"]) ? $_SESSION[constant("cAppKey")]["credential"]["idx"] : 0) . "'";
-						$result = $this->con->update($ff, $this->table, $fi . $pa);
-					} else {
-						$ff .= ", created_at = NOW(), created_by = '" . $this->con->real_escape_string(isset($_SESSION[constant("cAppKey")]["credential"]["idx"]) ? $_SESSION[constant("cAppKey")]["credential"]["idx"] : 0) . "'";
-						$result = $this->con->insert($ff, $this->table, null);
-					}
+		try {
+			$this->con->beginTransaction();
 
-					$this->con->commit();
-					return $result;
-				}
-			} catch (Exception $e) {
+			if (isset($this->field["idx"])) {
+				unset($this->field["idx"]);
+			}
+
+			$ff = implode(" , ", $this->field);
+
+			if (!preg_match("/'/", $ff)) {
 				$this->con->rollback();
 				return false;
 			}
-		} else {
+
+			$isUpdate = isset($this->filter) && is_array($this->filter) && count($this->filter) > 0;
+
+			if ($isUpdate && count($this->filter) == 1 && ltrim(rtrim($this->filter[0])) == "active = 'yes'") {
+				unset($this->filter);
+				$isUpdate = false;
+			}
+
+			if ($isUpdate) {
+				$fi = " WHERE " . implode(" AND ", $this->filter) . " ";
+				$pa = isset($this->paginate) ? " LIMIT " . implode(" , ", $this->paginate) . " " : "";
+				$ff .= ", modified_at = NOW(), modified_by = '" . $this->con->real_escape_string(isset($_SESSION[constant("cAppKey")]["credential"]["idx"]) ? $_SESSION[constant("cAppKey")]["credential"]["idx"] : 0) . "'";
+
+				$this->con->update($ff, $this->table, $fi . $pa);
+				$this->con->commit();
+				$this->clearTableCache();
+
+				if (preg_match("/idx\s*=\s*['\"]?(\d+)['\"]?/i", $fi, $matches)) {
+					return (int)$matches[1];
+				}
+				return true;
+			} else {
+				$ff .= ", created_at = NOW(), created_by = '" . $this->con->real_escape_string(isset($_SESSION[constant("cAppKey")]["credential"]["idx"]) ? $_SESSION[constant("cAppKey")]["credential"]["idx"] : 0) . "'";
+
+				$this->con->insert($ff, $this->table, null);
+
+				$insertedId = (int)$this->con->lastInsertId();
+
+				$this->con->commit();
+
+				$this->clearTableCache();
+
+				return $insertedId;
+			}
+		} catch (Exception $e) {
+			$this->con->rollback();
+			error_log('DOLModel::save Error: ' . $e->getMessage());
 			return false;
 		}
 	}
@@ -85,15 +108,17 @@ class DOLModel extends rootOBJ
 				$ff = " active = 'no', removed_at = NOW(), removed_by = '" . $this->con->real_escape_string(isset($_SESSION[constant("cAppKey")]["credential"]["idx"]) ? $_SESSION[constant("cAppKey")]["credential"]["idx"] : 0) . "'";
 				$result = $this->con->update($ff, $this->table, $fi . $pa);
 
-				$this->con->commit();			
-			// Limpar cache da tabela após remoção
-			$this->clearTableCache();
-							return $result;
+				$this->con->commit();
+
+				$this->clearTableCache();
+
+				return $result;
 			} catch (Exception $e) {
 				$this->con->rollback();
 				return false;
 			}
 		}
+		return false;
 	}
 
 	public function populate($data, $encode = false)
@@ -155,7 +180,7 @@ class DOLModel extends rootOBJ
 				$soon = $v[1];
 				$classes = [$soon["name"]];
 				$reverse_table = isset($soon["direction"]) ? $soon["direction"] : "";
-				$options = isset($soon["options"]) ? $soon["options"] : "";
+				$options = isset($soon["options"]) ? $options : "";
 				$this->attach_son($classesfather, $classes, $reverse_table, $options);
 			}
 		}
@@ -174,7 +199,6 @@ class DOLModel extends rootOBJ
 
 	public function load_data()
 	{
-		// Gerar chave de cache única baseada na consulta
 		$cacheKey = null;
 		if ($this->cacheEnabled) {
 			$ff = isset($this->field) ? implode(",", $this->field) : " * ";
@@ -182,12 +206,10 @@ class DOLModel extends rootOBJ
 			$or = isset($this->order) ? " ORDER BY " . implode(" , ", $this->order) . " " : "";
 			$gp = isset($this->group) ? " GROUP BY " . implode(" , ", $this->group) . " " : "";
 			$pa = isset($this->paginate) ? " LIMIT " . implode(" , ", $this->paginate) . " " : "";
-			
-			// Criar hash da consulta para usar como chave de cache
+
 			$query = $this->table . ':' . $ff . $fi . $gp . $or . $pa;
 			$cacheKey = 'query:' . md5($query);
-			
-			// Tentar buscar do cache
+
 			$cachedData = $this->cache->get($cacheKey);
 			if ($cachedData !== null) {
 				$this->set_data($cachedData['data']);
@@ -195,8 +217,7 @@ class DOLModel extends rootOBJ
 				return;
 			}
 		}
-		
-		// Se não encontrou no cache ou cache desabilitado, buscar do banco
+
 		$ff = isset($this->field) ? implode(",", $this->field) : " * ";
 		$fi = isset($this->filter) ? " WHERE " . implode(" AND ", $this->filter) . " " : "";
 		$or = isset($this->order) ? " ORDER BY " . implode(" , ", $this->order) . " " : "";
@@ -205,11 +226,10 @@ class DOLModel extends rootOBJ
 		$r = $this->con->select($ff, $this->table, $fi . $gp . $or . $pa);
 		$data = $this->con->results($r);
 		$recordset = $this->con->result($this->con->select(" COUNT( " . implode(",", $this->keys["pk"]) . ") AS q ", $this->table, $fi . $gp), "q", 0);
-		
+
 		$this->set_data($data);
 		$this->set_recordset($recordset);
-		
-		// Armazenar no cache se estiver habilitado
+
 		if ($this->cacheEnabled && $cacheKey) {
 			$this->cache->set($cacheKey, [
 				'data' => $data,
@@ -376,10 +396,9 @@ class DOLModel extends rootOBJ
 			}
 
 			$this->con->commit();
-			
-			// Limpar cache da tabela após modificação
+
 			$this->clearTableCache();
-			
+
 			return true;
 		} catch (Exception $e) {
 			$this->con->rollback();
@@ -387,15 +406,10 @@ class DOLModel extends rootOBJ
 		}
 	}
 
-	/**
-	 * Limpa o cache relacionado a esta tabela
-	 * Remove todas as chaves de cache que começam com 'query:' e contêm o nome da tabela
-	 */
 	protected function clearTableCache()
 	{
 		if ($this->cacheEnabled && $this->cache) {
 			try {
-				// Limpar todas as queries relacionadas a esta tabela
 				$pattern = 'query:*' . $this->table . '*';
 				$this->cache->deletePattern($pattern);
 			} catch (Exception $e) {
@@ -404,21 +418,11 @@ class DOLModel extends rootOBJ
 		}
 	}
 
-	/**
-	 * Define o TTL do cache para esta instância do model
-	 * 
-	 * @param int $ttl Tempo em segundos
-	 */
 	public function setCacheTTL(int $ttl)
 	{
 		$this->cacheTTL = $ttl;
 	}
 
-	/**
-	 * Habilita ou desabilita o cache para esta instância
-	 * 
-	 * @param bool $enabled
-	 */
 	public function setCacheEnabled(bool $enabled)
 	{
 		$this->cacheEnabled = $enabled && $this->cache && $this->cache->isConnected();

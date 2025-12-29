@@ -52,6 +52,10 @@ $dispatcher = new dispatcher(true);
 // Definir rotas da aplicação
 $dispatcher->add_route("GET", "/(index(\.json|\.xml|\.html)).*?", "function:basic_redir", null, $home_url);
 $dispatcher->add_route("GET", "/?", "site_controller:display", null, $params);
+// Rotas de autenticação
+$dispatcher->add_route("GET", "/login(\.json|\.xml|\.html)?", "auth_controller:display", null, $params);
+$dispatcher->add_route("POST", "/login(\.json|\.xml|\.html)?", "auth_controller:login", null, $params);
+$dispatcher->add_route("GET", "/sair", "auth_controller:logout", null, $params);
 
 // Executar dispatcher e tratar falhas
 if (!$dispatcher->exec()) {

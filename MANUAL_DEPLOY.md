@@ -152,6 +152,84 @@ ls -la /opt/nexo/manager/app/inc/lib/vendor
 - ✅ Imagem `nexofw-app:latest` criada (Passo 1.2)
 - ✅ Rede overlay `dotskynet` existente (onde estão MySQL e Kafka)
 
+## 🗄️ Passo 2: Criar Database e Usuário MySQL
+
+### 2.1. Acessar Container MySQL
+
+```bash
+# Via Portainer: Stacks → [sua-stack-mysql] → Containers → mysql → Console
+
+# OU via SSH:
+docker exec -it $(docker ps -q -f name=mysql) mysql -uroot -p
+```
+
+Digite a senha root quando solicitado.
+
+### 2.2. Executar Comandos SQL
+
+```sql
+-- 1. Criar database
+CREATE DATABASE IF NOT EXISTS <SEU_DATABASE> 
+  CHARACTER SET utf8mb4 
+  COLLATE utf8mb4_general_ci;
+
+-- 2. Criar usuário dedicado (troque as credenciais)
+CREATE USER IF NOT EXISTS '<SEU_USUARIO>'@'%' IDENTIFIED BY '<SUA_SENHA_MYSQL>';
+
+-- 3. Conceder permissões
+GRANT ALL PRIVILEGES ON <SEU_DATABASE>.* TO '<SEU_USUARIO>'@'%';
+
+-- 4. Aplicar mudanças
+FLUSH PRIVILEGES;
+
+-- 5. Verificar
+SHOW DATABASES LIKE '<SEU_DATABASE>%';
+SELECT User, Host FROM mysql.user WHERE User = '<SEU_USUARIO>';
+
+-- 6. Sair
+EXIT;
+```
+
+**Exemplo com valores substituídos:**
+```sql
+CREATE DATABASE IF NOT EXISTS nexo_production 
+  CHARACTER SET utf8mb4 
+  COLLATE utf8mb4_general_ci;
+
+CREATE USER IF NOT EXISTS 'nexo_user'@'%' IDENTIFIED BY 'SuaSenhaForte123!';
+
+GRANT ALL PRIVILEGES ON nexo_production.* TO 'nexo_user'@'%';
+
+FLUSH PRIVILEGES;
+```
+
+### 2.3. Testar Conexão
+
+```bash
+# Testar conexão com novo usuário
+docker exec -it $(docker ps -q -f name=mysql) \
+  mysql -u<SEU_USUARIO> -p'<SUA_SENHA_MYSQL>' <SEU_DATABASE>
+
+# Dentro do MySQL, teste:
+SELECT DATABASE();
+SHOW TABLES;
+EXIT;
+```
+
+### 2.4. Anotar Credenciais
+
+📝 **Guarde estas informações (você usará nos próximos passos):**
+
+```
+Host: mysql                    (nome do serviço Docker)
+Port: 3306                     (interno na rede dotskynet)
+Database: <SEU_DATABASE>
+User: <SEU_USUARIO>
+Password: <SUA_SENHA_MYSQL>
+```
+
+---
+
 ### 2.1. Acessar Portainer
 
 1. Acesse: `https://seu-portainer.com`
