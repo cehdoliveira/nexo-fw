@@ -46,9 +46,7 @@ class auth_controller
         $alpineControllers = ['authController'];
 
         include(constant("cRootServer") . "ui/common/head.php");
-        include(constant("cRootServer") . "ui/common/header.php");
         include(constant("cRootServer") . "ui/page/login.php");
-        include(constant("cRootServer") . "ui/common/footer.php");
         include(constant("cRootServer") . "ui/common/foot.php");
     }
 }

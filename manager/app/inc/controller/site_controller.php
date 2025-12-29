@@ -4,6 +4,11 @@ class site_controller
 {
     public function display($info)
     {
+
+        if (!auth_controller::check_login()) {
+            basic_redir($GLOBALS["login_url"]);
+        }
+        
         $alpineControllers = ['authController', 'statsController', 'actionsController', 'usersController'];
 
         include(constant("cRootServer") . "ui/common/head.php");

@@ -1,5 +1,7 @@
-<!-- Footer -->
-<footer class="bg-dark text-white py-4 mt-5">
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
     <div class="container">
         <div class="row">
             <div class="col-md-4">
@@ -27,7 +29,7 @@
         </div>
         <hr class="bg-white">
         <div class="text-center">
-            <p class="mb-0">&copy; <?php echo date('Y'); ?> Nexo. Todos os direitos reservados.</p>
+            <p class="mb-0">&copy; <?php print(date('Y')); ?> Nexo. Todos os direitos reservados.</p>
         </div>
     </div>
 </footer>

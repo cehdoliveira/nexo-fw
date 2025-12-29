@@ -154,3 +154,35 @@ body {
 .sidebar-sticky::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Página de autenticação: fundo escuro atrás do card */
+.auth-hero {
+  background-color: #111217; /* tom de preto leve / cinza escuro */
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.auth-hero .card {
+  background-color: #ffffff; /* card branco */
+  color: #0b0b0b;
+  border-radius: 0.5rem;
+}
+
+.auth-hero .card .form-label,
+.auth-hero .card .text-muted {
+  color: #111827; /* labels pretas escuras */
+}
+
+.auth-hero .card .form-control {
+  color: #0b0b0b;
+  background-color: #ffffff;
+  border-color: #ced4da;
+}
+
+.auth-hero .btn-primary {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}

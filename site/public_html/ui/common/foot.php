@@ -9,7 +9,7 @@
     // Verificar se existem controllers definidos para esta página
     if (isset($alpineControllers) && is_array($alpineControllers) && count($alpineControllers) > 0) {
         foreach ($alpineControllers as $controller) {
-            echo '<script src="' . constant('cFrontend') . 'assets/js/alpine/' . $controller . '.js"></script>' . "\n    ";
+            print('<script src="' . constant('cFrontend') . 'assets/js/alpine/' . $controller . '.js"></script>' . "\n    ");
         }
     }
     ?>
@@ -18,7 +18,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
     <!-- Custom JS -->
-    <script src="<?php echo constant('cFrontend'); ?>assets/js/main.js"></script>
-</body>
+    <script src="<?php printf("%s%s", constant('cFrontend'), "assets/js/main.js"); ?>"></script>
+    </body>
 
-</html>
+    </html>

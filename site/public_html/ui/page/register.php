@@ -1,8 +1,8 @@
-<div class="container d-flex align-items-center justify-content-center" style="min-height: calc(100vh - 180px);">
+<div class="container register-page d-flex align-items-start align-items-md-center justify-content-center">
     <div class="row w-100">
-        <div class="col-12 col-md-8 col-lg-6 mx-auto">
-            <div class="card shadow-lg border-0">
-                <div class="card-body p-5">
+        <div class="col-12 col-sm-10 col-md-8 col-lg-6 mx-auto">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-3 p-md-5">
                     <div class="text-center mb-4">
                         <i class="bi bi-person-plus text-primary" style="font-size: 3.5rem;"></i>
                         <h3 class="mt-3 mb-2">Crie sua conta</h3>
@@ -51,28 +51,28 @@
                         </div>
                     </form>
 
-                    <?php if (isset($_SESSION["messages_app"]["danger"])): ?>
+                    <?php if (isset($_SESSION["messages_app"]["danger"])) { ?>
                         <div class="alert alert-danger mt-3 mb-0" role="alert">
                             <?php
-                            echo implode('<br>', $_SESSION["messages_app"]["danger"]);
+                            print(implode('<br>', $_SESSION["messages_app"]["danger"]));
                             unset($_SESSION["messages_app"]["danger"]);
                             ?>
                         </div>
-                    <?php endif; ?>
+                    <?php } ?>
 
-                    <?php if (isset($_SESSION["messages_app"]["success"])): ?>
+                    <?php if (isset($_SESSION["messages_app"]["success"])) { ?>
                         <div class="alert alert-success mt-3 mb-0" role="alert">
                             <?php
-                            echo implode('<br>', $_SESSION["messages_app"]["success"]);
+                            print(implode('<br>', $_SESSION["messages_app"]["success"]));
                             unset($_SESSION["messages_app"]["success"]);
                             ?>
                         </div>
-                    <?php endif; ?>
+                    <?php } ?>
                 </div>
             </div>
 
             <div class="text-center mt-4">
-                <a href="<?php echo $GLOBALS['login_url']; ?>" class="text-decoration-none">Já possui conta? Entrar</a>
+                <a href="<?php print($GLOBALS["login_url"]); ?>" class="text-decoration-none">Já possui conta? Entrar</a>
             </div>
         </div>
     </div>

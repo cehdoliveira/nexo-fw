@@ -1,9 +1,9 @@
-<div class="container d-flex align-items-center justify-content-center" style="min-height: calc(100vh - 180px);">
+<div class="container d-flex align-items-center justify-content-center" style="min-height: calc(100vh - 140px);">
     <div class="row w-100">
-        <div class="col-12 col-md-8 col-lg-5 mx-auto">
+        <div class="col-12 col-sm-10 col-md-8 col-lg-5 mx-auto">
             <!-- Card de Login -->
-            <div class="card shadow-lg border-0">
-                <div class="card-body p-5">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-3 p-md-5">
                     <!-- Logo/Título -->
                     <div class="text-center mb-4">
                         <i class="bi bi-person-circle text-primary" style="font-size: 4rem;"></i>
@@ -12,7 +12,7 @@
                     </div>
 
                     <!-- Formulário de Login com Alpine.js -->
-                    <form x-data="loginController" @submit.prevent="handleSubmit" method="POST" action="<?php echo $GLOBALS['login_url']; ?>">
+                    <form x-data="loginController" @submit.prevent="handleSubmit" method="POST" action="<?php print($GLOBALS["login_url"]); ?>">
                         <!-- Campo Login -->
                         <div class="mb-3">
                             <label for="login" class="form-label">
@@ -69,7 +69,7 @@
                                     Lembrar-me
                                 </label>
                             </div>
-                            <a href="<?php echo $GLOBALS['password_url']; ?>" class="text-decoration-none small">
+                            <a href="<?php print($GLOBALS["password_url"]); ?>" class="text-decoration-none small">
                                 Esqueci minha senha
                             </a>
                         </div>
@@ -92,36 +92,36 @@
                     </form>
 
                     <!-- Mensagens de Erro do Backend -->
-                    <?php if (isset($_SESSION["messages_app"]["danger"])): ?>
+                    <?php if (isset($_SESSION["messages_app"]["danger"])) { ?>
                         <div class="alert alert-danger mt-3 mb-0" role="alert">
                             <i class="bi bi-exclamation-triangle-fill"></i>
                             <?php
-                            echo implode('<br>', $_SESSION["messages_app"]["danger"]);
+                            print(implode('<br>', $_SESSION["messages_app"]["danger"]));
                             unset($_SESSION["messages_app"]["danger"]);
                             ?>
                         </div>
-                    <?php endif; ?>
+                    <?php } ?>
 
-                    <?php if (isset($_SESSION["messages_app"]["success"])): ?>
+                    <?php if (isset($_SESSION["messages_app"]["success"])) { ?>
                         <div class="alert alert-success mt-3 mb-0" role="alert">
                             <i class="bi bi-check-circle-fill"></i>
                             <?php
-                            echo implode('<br>', $_SESSION["messages_app"]["success"]);
+                            print(implode('<br>', $_SESSION["messages_app"]["success"]));
                             unset($_SESSION["messages_app"]["success"]);
                             ?>
                         </div>
-                    <?php endif; ?>
+                    <?php } ?>
                 </div>
             </div>
 
             <!-- Informações Adicionais -->
             <div class="text-center mt-4">
-                        <p class="text-muted small">
-                            <i class="bi bi-shield-check"></i> Suas informações estão protegidas
-                        </p>
-                        <p class="mt-2">
-                            <a href="<?php print($GLOBALS["register_url"]); ?>" class="text-decoration-none">Não possui conta? Cadastre-se</a>
-                        </p>
+                <p class="text-muted small">
+                    <i class="bi bi-shield-check"></i> Suas informações estão protegidas
+                </p>
+                <p class="mt-2">
+                    <a href="<?php print($GLOBALS["register_url"]); ?>" class="text-decoration-none">Não possui conta? Cadastre-se</a>
+                </p>
             </div>
         </div>
     </div>

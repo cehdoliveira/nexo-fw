@@ -14,4 +14,4 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="<?php echo constant('cFrontend'); ?>assets/css/main.css">
+    <link rel="stylesheet" href="<?php printf("%s%s", constant("cFrontend"), "assets/css/main.css"); ?>">
