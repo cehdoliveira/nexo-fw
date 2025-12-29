@@ -120,7 +120,7 @@
                             <i class="bi bi-shield-check"></i> Suas informações estão protegidas
                         </p>
                         <p class="mt-2">
-                            <a href="<?php echo $GLOBALS['register_url']; ?>" class="text-decoration-none">Não possui conta? Cadastre-se</a>
+                            <a href="<?php print($GLOBALS["register_url"]); ?>" class="text-decoration-none">Não possui conta? Cadastre-se</a>
                         </p>
             </div>
         </div>
