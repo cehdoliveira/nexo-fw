@@ -9,7 +9,8 @@ class site_controller
             basic_redir($GLOBALS["login_url"]);
         }
         
-        $alpineControllers = ['authController', 'statsController', 'actionsController', 'usersController'];
+        // Use unified controllers bundle to simplify assets
+        $alpineControllers = ['site', 'auth'];
 
         include(constant("cRootServer") . "ui/common/head.php");
         include(constant("cRootServer") . "ui/common/header.php");

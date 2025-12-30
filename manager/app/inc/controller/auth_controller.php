@@ -43,7 +43,8 @@ class auth_controller
 
     public function display($info)
     {
-        $alpineControllers = ['authController'];
+        // Carregar bundle único de controllers Alpine
+        $alpineControllers = ['auth'];
 
         include(constant("cRootServer") . "ui/common/head.php");
         include(constant("cRootServer") . "ui/page/login.php");

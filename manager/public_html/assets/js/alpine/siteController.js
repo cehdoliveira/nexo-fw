@@ -1,9 +1,80 @@
 /**
- * Users Controller - Alpine.js
- * Controla a tabela de usuários
+ * Controllers Bundle - Alpine.js
+ * Unifica os controllers do manager em um único arquivo para simplificar carregamento.
  */
 
 document.addEventListener("alpine:init", () => {
+  // Stats Controller
+  Alpine.data("statsController", () => ({
+    stats: {
+      users: 1234,
+      content: 567,
+      visits: 45678,
+      revenue: 12345.67,
+    },
+
+    init() {
+      this.loadStats();
+    },
+
+    async loadStats() {
+      // fetch real stats if needed
+    },
+
+    formatCurrency(value) {
+      return (
+        "R$ " +
+        value.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    },
+
+    formatNumber(value) {
+      return value.toLocaleString("pt-BR");
+    },
+  }));
+
+  // Actions Controller
+  Alpine.data("actionsController", () => ({
+    selectedAction: "",
+
+    selectAction(action) {
+      this.selectedAction = action;
+      setTimeout(() => {
+        this.selectedAction = "";
+      }, 3000);
+    },
+
+    async createUser() {
+      const { value: formValues } = await Swal.fire({
+        title: "Novo Usuário",
+        html:
+          '<input id="swal-input1" class="swal2-input" placeholder="Nome">' +
+          '<input id="swal-input2" class="swal2-input" placeholder="Email">',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: "Criar",
+        cancelButtonText: "Cancelar",
+        preConfirm: () => {
+          return [
+            document.getElementById("swal-input1").value,
+            document.getElementById("swal-input2").value,
+          ];
+        },
+      });
+
+      if (formValues) {
+        Toast.fire({
+          icon: "success",
+          title: "Usuário criado com sucesso!",
+        });
+      }
+    },
+  }));
+
+  // Users Controller
   Alpine.data("usersController", () => ({
     users: [
       {
@@ -46,13 +117,11 @@ document.addEventListener("alpine:init", () => {
     search: "",
 
     init() {
-      // Inicialização
       console.log("Users Controller inicializado");
     },
 
     get filteredUsers() {
       if (!this.search) return this.users;
-
       return this.users.filter(
         (user) =>
           user.name.toLowerCase().includes(this.search.toLowerCase()) ||
@@ -66,7 +135,6 @@ document.addEventListener("alpine:init", () => {
 
     async viewUser(user) {
       this.selectedUser = user.id;
-
       await Swal.fire({
         title: user.name,
         html: `
@@ -104,7 +172,6 @@ document.addEventListener("alpine:init", () => {
 
       if (result.isConfirmed) {
         this.users = this.users.filter((u) => u.id !== user.id);
-
         await Swal.fire(
           "Excluído!",
           "Usuário removido com sucesso.",
