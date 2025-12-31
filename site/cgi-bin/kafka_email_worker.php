@@ -55,13 +55,21 @@ echo "[DEBUG] Autoload carregado\n";
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Configuração de logs usando constante do kernel
-$logFile = defined('LOG_DIR') ? LOG_DIR . 'email_worker.log' : cRootServer_APP . '/logs/email_worker.log';
+// Padrão: log em arquivo DESATIVADO (apenas saída no console)
+$ENABLE_FILE_LOG = false;
+$LOG_FILE = null;
 
-// Criar diretório de logs se não existir
-$logDir = dirname($logFile);
-if (!is_dir($logDir)) {
-    mkdir($logDir, 0777, true);
+// ===== Seção de LOG (comente/descomente conforme necessário) =====
+// Para ativar o log em arquivo, descomente as duas linhas abaixo:
+// $ENABLE_FILE_LOG = true;
+// $LOG_FILE = defined('LOG_DIR') ? LOG_DIR . 'email_worker.log' : __DIR__ . '/../logs/email_worker.log';
+
+// Se habilitado, criar diretório de logs se não existir
+if (!empty($ENABLE_FILE_LOG) && !empty($LOG_FILE)) {
+    $logDir = dirname($LOG_FILE);
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0777, true);
+    }
 }
 
 /**
@@ -69,10 +77,12 @@ if (!is_dir($logDir)) {
  */
 function log_message($message, $level = 'INFO')
 {
-    global $logFile;
+    global $LOG_FILE, $ENABLE_FILE_LOG;
     $timestamp = date('Y-m-d H:i:s');
     $logMessage = "[{$timestamp}] [{$level}] {$message}\n";
-    file_put_contents($logFile, $logMessage, FILE_APPEND);
+    if (!empty($ENABLE_FILE_LOG) && !empty($LOG_FILE)) {
+        file_put_contents($LOG_FILE, $logMessage, FILE_APPEND);
+    }
     echo $logMessage;
 }
 
