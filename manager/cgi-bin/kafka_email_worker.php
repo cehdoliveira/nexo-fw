@@ -1,12 +1,12 @@
 #!/usr/bin/env php
 <?php
 /**
- * email_worker.php
+ * kafka_email_worker.php
  * 
  * Worker Kafka Consumer para processamento de emails
  * Consome mensagens do tópico Kafka e envia emails via PHPMailer
  * 
- * Uso: php email_worker.php
+ * Uso: php kafka_email_worker.php
  * 
  * @package Nexo
  * @author Nexo Framework
