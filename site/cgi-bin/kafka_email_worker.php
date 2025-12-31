@@ -19,7 +19,7 @@ date_default_timezone_set('America/Sao_Paulo');
 // Simulação de ambiente HTTP para CLI
 // Necessário porque scripts CLI não possuem $_SERVER configurado
 $_SERVER["DOCUMENT_ROOT"] = dirname(__FILE__) . "/../public_html/";
-$_SERVER["HTTP_HOST"] = "manager.nexo.local";
+$_SERVER["HTTP_HOST"] = "dotsky.com.br";
 
 // Ambiente HTTP (padrão)
 putenv('SERVER_PORT=80');
@@ -161,7 +161,7 @@ function sendEmailViaPHPMailer(array $emailData): bool
 function runWorker()
 {
     echo "[DEBUG] Entrando em runWorker()\n";
-    
+
     log_message("========================================");
     log_message("Email Worker iniciado");
     log_message("========================================");
@@ -174,7 +174,7 @@ function runWorker()
         $conf->set('auto.offset.reset', 'earliest'); // earliest para não perder mensagens
         $conf->set('enable.auto.commit', 'true'); // Auto commit para marcar mensagens processadas
         $conf->set('auto.commit.interval.ms', '1000'); // Commit a cada 1 segundo
-        
+
         // Configurar callbacks para debug de rebalance
         $conf->setRebalanceCb(function (\RdKafka\KafkaConsumer $kafka, $err, array $partitions = null) {
             switch ($err) {
@@ -196,7 +196,7 @@ function runWorker()
                     break;
             }
         });
-        
+
         // Adicionar debug de configuração
         log_message("Configuração Kafka:");
         log_message("  Broker: " . KAFKA_HOST . ':' . KAFKA_PORT);
@@ -217,7 +217,7 @@ function runWorker()
 
         log_message("Conectado ao Kafka: " . KAFKA_HOST . ':' . KAFKA_PORT);
         log_message("Consumindo tópico: " . KAFKA_TOPIC_EMAIL);
-        
+
         // Log inicial mais verboso
         log_message("Worker pronto para receber mensagens...");
         $messageCount = 0;
@@ -225,7 +225,7 @@ function runWorker()
         // Loop infinito de consumo
         while (true) {
             $message = $consumer->consume(30 * 1000); // 30 segundos de timeout (reduzido)
-            
+
             // Log de heartbeat a cada 20 tentativas sem mensagem
             if ($message === null || $message->err === RD_KAFKA_RESP_ERR__TIMED_OUT) {
                 $messageCount++;
@@ -238,7 +238,7 @@ function runWorker()
                 case RD_KAFKA_RESP_ERR_NO_ERROR:
                     // Reset contador quando receber mensagem
                     $messageCount = 0;
-                    
+
                     // Mensagem recebida
                     log_message("========================================");
                     log_message("🎯 MENSAGEM RECEBIDA!");
@@ -246,7 +246,7 @@ function runWorker()
                     log_message("Offset: {$message->offset}");
                     log_message("Timestamp: " . date('Y-m-d H:i:s', $message->timestamp / 1000));
                     log_message("========================================");
-                    
+
                     $emailData = json_decode($message->payload, true);
 
                     if ($emailData === null) {
