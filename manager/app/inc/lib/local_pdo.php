@@ -7,10 +7,10 @@ class local_pdo
 
 	public function __construct($sys = NULL)
 	{
-		$host = constant("cHStr");
-		$user = constant("cUserStr");
-		$pass = constant("cPassStr");
-		$database = constant("cBancoStr");
+		$host = constant("DB_HOST");
+		$user = constant("DB_USER");
+		$pass = constant("DB_PASS");
+		$database = constant("DB_NAME");
 
 		try {
 			$dsn = "mysql:host={$host};dbname={$database};charset=utf8mb4";
