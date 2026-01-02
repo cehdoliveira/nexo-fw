@@ -160,34 +160,22 @@ define("cAppRoot", "/");
 /**
  * Caminho físico da raiz do projeto
  */
-define(
-    "cRootServer",
-    sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot"))
-);
+define("cRootServer", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot")));
 
 /**
  * Caminho físico da pasta app
  */
-define(
-    "cRootServer_APP",
-    sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot") . "../app")
-);
+define("cRootServer_APP", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot") . "../app"));
 
 /**
  * URL base da aplicação
  */
-define(
-    "cFrontend",
-    sprintf("http://%s%s", $_SERVER["HTTP_HOST"], constant("cAppRoot"))
-);
+define("cFrontend", sprintf("http://%s%s", $_SERVER["HTTP_HOST"], constant("cAppRoot")));
 
 /**
  * URL base dos assets
  */
-define(
-    "cAssets",
-    sprintf("%s%s", constant("cFrontend"), "assets/")
-);
+define("cAssets", sprintf("%s%s", constant("cFrontend"), "assets/"));
 
 // ============================================================================
 // CONFIGURAÇÕES DE SESSÃO
@@ -220,10 +208,7 @@ define("UPLOAD_MAX_SIZE", 10);
 /**
  * Tipos de arquivos permitidos
  */
-define(
-    "UPLOAD_ALLOWED_TYPES",
-    "jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx"
-);
+define("UPLOAD_ALLOWED_TYPES", "jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx");
 
 // ============================================================================
 // CONFIGURAÇÕES DE LOG

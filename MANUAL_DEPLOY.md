@@ -1,840 +1,920 @@
-# 📦 Deploy Manual via FTP - Nexo Framework
+# Nexo Framework - Guia de Deploy em Produção
 
-Stack pronta para deploy manual de arquivos via FTP/SFTP, sem necessidade de CI/CD, GitHub ou Docker Registry externo.
+[![PHP Version](https://img.shields.io/badge/PHP-8.3+-blue.svg)](https://www.php.net/)
+[![MySQL Version](https://img.shields.io/badge/MySQL-8.0-orange.svg)](https://www.mysql.com/)
+[![Redis Version](https://img.shields.io/badge/Redis-7.2-red.svg)](https://redis.io/)
+[![Kafka Version](https://img.shields.io/badge/Kafka-Latest-black.svg)](https://kafka.apache.org/)
+[![Portainer](https://img.shields.io/badge/Portainer-2.0+-purple.svg)](https://www.portainer.io/)
+[![Docker Swarm](https://img.shields.io/badge/Docker-Swarm-blue.svg)](https://docs.docker.com/engine/swarm/)
 
-## 🎯 Conceito
+**Deploy em Produção** usando **Portainer** como orquestrador visual, **Docker Swarm** para gerenciamento de containers e **Git** para atualização do código. Este guia assume que você **já possui uma VPS** com **MySQL**, **Kafka** e **Redis** rodando como stacks no Portainer.
 
-Esta stack cria um ambiente PHP completo (Apache, MySQL, Redis, Kafka) onde você simplesmente **copia os arquivos via FTP** para os volumes do servidor e tudo funciona automaticamente.
-
-**Não precisa:**
-- ❌ GitHub Actions
-- ❌ Docker build local
-- ❌ GHCR ou registry externo
-- ❌ Conhecimento em Docker
-
-**Precisa apenas:**
-- ✅ Servidor com Docker Swarm + Portainer
-- ✅ Cliente FTP/SFTP (FileZilla, WinSCP, etc)
-- ✅ Copiar arquivos para `/opt/nexo/site` e `/opt/nexo/manager`
+> **Este documento é para PRODUÇÃO.** Para desenvolvimento local, consulte [README.md](README.md)
 
 ---
 
-## 🚀 Passo 1: Preparar Servidor
+## 📚 Índice
 
-### 1.1. Clonar Repositório no Servidor
+1. [Visão Geral](#-visão-geral)
+2. [Pré-requisitos](#-pré-requisitos)
+3. [Clonar o Projeto](#-passo-1-clonar-o-projeto)
+4. [Build da Imagem](#-passo-2-build-da-imagem-customizada)
+5. [Deploy no Portainer](#-passo-3-deploy-no-portainer)
+6. [Configuração Kernel](#-passo-4-configurar-kernelphp)
+7. [Instalar Dependências](#-passo-5-instalar-dependências-composer)
+8. [Atualizações com Git](#-atualizações-com-git-pull)
+9. [Monitoramento](#-monitoramento)
+10. [Troubleshooting](#-troubleshooting)
 
-SSH no servidor e clone o repositório diretamente em `/opt/`:
+---
+
+## 🏗️ Visão Geral
+
+Este guia pressupõe que você **já possui**:
+
+✅ **VPS Linux** com Docker e Docker Swarm configurados  
+✅ **Portainer** rodando e acessível  
+✅ **Stack MySQL** com banco de dados operacional  
+✅ **Stack Kafka** com broker configurado  
+✅ **Traefik** configurado com SSL/TLS (Let's Encrypt)  
+✅ **Rede Overlay** para comunicação entre stacks  
+
+**Observação**: Redis será criado DENTRO da stack `nexo-app` (não precisa estar rodando previamente)  
+
+### O que você vai fazer:
+
+1. **Clonar** o repositório Nexo Framework no servidor
+2. **Build** de uma imagem Docker customizada com PHP 8.3 + extensões
+3. **Deploy** da stack no Portainer usando a imagem criada
+4. **Configurar** `kernel.php` com credenciais do banco/redis/kafka
+5. **Instalar** dependências Composer
+6. **Acessar** via domínio com SSL
+
+### Arquitetura Final
+
+```
+┌─────────────────────────────────────────────────┐
+│           🌐 Traefik (Reverse Proxy)           │
+│   ├─ site.seudominio.com → :80                 │
+│   └─ manager.seudominio.com → :8080            │
+└──────────────┬──────────────────────────────────┘
+               │ Roteia para
+┌──────────────▼──────────────────────────────────┐
+│        Stack: nexo-app (Sua Aplicação)         │
+│  ├─ app (2 replicas) - PHP 8.3 + Apache        │
+│  ├─ redis - Redis 7.2 Alpine (Cache interno)   │
+│  ├─ email_worker_site - Kafka Consumer         │
+│  └─ email_worker_manager - Kafka Consumer      │
+└─────┬────────────────┬──────────────────────────┘
+      │ Conecta via rede overlay às stacks externas
+      ├─────────────┬──────────────┬───────────────┐
+      │             │              │               │
+┌─────▼──────┐ ┌────▼─────┐ ┌─────▼─────┐
+│   MySQL    │ │  Kafka   │ │  Traefik  │
+│ (Externa)  │ │ (Externa)│ │ (Externa) │
+└────────────┘ └──────────┘ └───────────┘
+  Seu BD         Sua Fila      Seu Proxy
+```
+
+---
+
+## 🛠️ Pré-requisitos
+
+### No Servidor (VPS)
+
+- **Sistema**: Ubuntu 20.04 LTS+ ou Debian 11+
+- **Docker**: 20.10+ instalado e rodando
+- **Docker Swarm**: Inicializado (`docker swarm init`)
+- **Portainer**: Acessível via web (ex: `https://portainer.seudominio.com`)
+- **Git**: Instalado (`apt install git`)
+- **Acesso SSH**: Com permissões sudo
+
+### Stacks Existentes no Portainer
+
+Você deve ter estas stacks **já rodando**:
+
+| Stack | Serviço | Porta Interna | Rede |
+|-------|---------|---------------|------|
+| `mysql-stack` | mysql | 3306 | overlay_network |
+| `kafka-stack` | kafka | 9092 | overlay_network |
+| `traefik-stack` | traefik | 80, 443 | overlay_network |
+
+**Observação**: Redis NÃO precisa estar rodando externamente, ele será criado dentro da stack `nexo-app`.
+
+**Nome da Rede Overlay**: Anote o nome (ex: `dotskynet`, `internet_net`). Você vai usar no compose.
+
+### Verificar Stacks
+
+No Portainer: e Traefik estão "Running"
+2. **Networks** → Anotar nome da rede overlay (ex: `dotskynet`)
+
+**Redis**: Não precisa verificar, será criado automaticamente na stack `nexo-app` "Running"
+2. **Networks** → Anotar nome da rede overlay (ex: `dotskynet`)
+
+---
+
+## 📦 Passo 1: Clonar o Projeto
+
+### 1.1 SSH no Servidor
 
 ```bash
-# SSH no servidor
 ssh usuario@seu-servidor.com
-
-# Navegar para /opt
-cd /opt
-
-# Clonar repositório (todas as configs já vêm prontas!)
-sudo git clone https://github.com/seu-usuario/nexofw.git nexo
-
-# Ou se preferir via SSH
-sudo git clone git@github.com:seu-usuario/nexofw.git nexo
 ```
 
-**Estrutura criada automaticamente:**
-```
-/opt/nexo/
-├── docker/
-│   ├── core/              # Configs de desenvolvimento
-│   ├── prod/              # Configs de produção (PRONTAS!)
-│   │   ├── Dockerfile     # Build da imagem customizada
-│   │   ├── entrypoint.sh  # (não usado com Dockerfile)
-│   │   ├── site.conf
-│   │   ├── manager.conf
-│   │   └── php.ini
-│   └── docker-compose-manual-deploy.yml
-├── site/                  # Seus arquivos PHP (site)
-├── manager/               # Seus arquivos PHP (manager)
-└── README.md
-```
-
-### 1.2. Build da Imagem Docker Customizada
-
-**⚠️ IMPORTANTE**: Este passo cria a imagem com todas as extensões PHP pré-instaladas.
+### 1.2 Criar Diretório e Clonar
 
 ```bash
-# Navegar para o diretório prod
-cd /opt/nexo/docker/prod
-
-# Build da imagem (5-10 minutos)
-sudo docker build -t nexofw-app:latest .
-
-# Verificar se foi criada
-sudo docker images | grep nexofw-app
-
-# Deve mostrar:
-# nexofw-app   latest   xxxxxxxxxxxxx   X minutes ago   XXX MB
-```
-
-**O que a imagem inclui:**
-- ✅ PHP 8.3 + Apache
-- ✅ Extensões: mysqli, pdo_mysql, zip, gd, redis, rdkafka
-- ✅ Configurações do Apache (site.conf, manager.conf)
-- ✅ PHP.ini otimizado
-- ✅ mod_rewrite habilitado
-- ✅ Healthcheck configurado
-
-### 1.3. Criar Diretório de Logs
-
-```bash
-# Criar diretório de logs
-sudo mkdir -p /opt/nexo/logs/apache2
-
-# Ajustar permissões dos arquivos (www-data uid:gid = 33:33)
-sudo chown -R 33:33 /opt/nexo/site
-sudo chown -R 33:33 /opt/nexo/manager
-sudo chown -R 33:33 /opt/nexo/logs
-sudo chmod -R 755 /opt/nexo/site
-sudo chmod -R 755 /opt/nexo/manager
-```
-
-### 1.4. Instalar Dependências do Composer
-
-**⚠️ IMPORTANTE**: As aplicações PHP precisam das dependências do Composer instaladas.
-
-```bash
-# Instalar dependências do site
-cd /opt/nexo/site/app/inc/lib
-sudo docker run --rm -v "$PWD":/app composer:latest install --no-dev --optimize-autoloader --ignore-platform-reqs
-
-# Instalar dependências do manager
-cd /opt/nexo/manager/app/inc/lib
-sudo docker run --rm -v "$PWD":/app composer:latest install --no-dev --optimize-autoloader --ignore-platform-reqs
-
-# Ajustar permissões dos arquivos gerados
-sudo chown -R 33:33 /opt/nexo/site/app/inc/lib/vendor
-sudo chown -R 33:33 /opt/nexo/manager/app/inc/lib/vendor
-```
-
-**O que isso faz:**
-- Lê `composer.json` e `composer.lock`
-- Instala todas as dependências em `vendor/`
-- `--no-dev`: Não instala dependências de desenvolvimento
-- `--optimize-autoloader`: Otimiza autoloader para produção
-- `--ignore-platform-reqs`: Ignora requisitos de extensões (elas existem na imagem nexofw-app)
-
-### 1.5. Verificar Configuração
-
-```bash
-# Listar imagem
-docker images nexofw-app
-
-# Testar imagem (opcional)
-docker run --rm nexofw-app:latest php -m | grep -E "(redis|rdkafka|mysqli)"
-
-# Deve mostrar:
-# mysqli
-# rdkafka
-# redis
-
-# Verificar se vendor foi criado
-ls -la /opt/nexo/site/app/inc/lib/vendor
-ls -la /opt/nexo/manager/app/inc/lib/vendor
-
-# Deve mostrar diretórios: autoload.php, composer/, etc.
-```
-
-✅ **Pronto!** Imagem customizada criada e dependências instaladas
-
----
-
-## 🐳 Passo 2: Deploy da Stack no Portainer
-
-**⚠️ Pré-requisitos:**
-- ✅ Imagem `nexofw-app:latest` criada (Passo 1.2)
-- ✅ Rede overlay `dotskynet` existente (onde estão MySQL e Kafka)
-
-## 🗄️ Passo 2: Criar Database e Usuário MySQL
-
-### 2.1. Acessar Container MySQL
-
-```bash
-# Via Portainer: Stacks → [sua-stack-mysql] → Containers → mysql → Console
-
-# OU via SSH:
-docker exec -it $(docker ps -q -f name=mysql) mysql -uroot -p
-```
-
-Digite a senha root quando solicitado.
-
-### 2.2. Executar Comandos SQL
-
-```sql
--- 1. Criar database
-CREATE DATABASE IF NOT EXISTS <SEU_DATABASE> 
-  CHARACTER SET utf8mb4 
-  COLLATE utf8mb4_general_ci;
-
--- 2. Criar usuário dedicado (troque as credenciais)
-CREATE USER IF NOT EXISTS '<SEU_USUARIO>'@'%' IDENTIFIED BY '<SUA_SENHA_MYSQL>';
-
--- 3. Conceder permissões
-GRANT ALL PRIVILEGES ON <SEU_DATABASE>.* TO '<SEU_USUARIO>'@'%';
-
--- 4. Aplicar mudanças
-FLUSH PRIVILEGES;
-
--- 5. Verificar
-SHOW DATABASES LIKE '<SEU_DATABASE>%';
-SELECT User, Host FROM mysql.user WHERE User = '<SEU_USUARIO>';
-
--- 6. Sair
-EXIT;
-```
-
-**Exemplo com valores substituídos:**
-```sql
-CREATE DATABASE IF NOT EXISTS nexo_production 
-  CHARACTER SET utf8mb4 
-  COLLATE utf8mb4_general_ci;
-
-CREATE USER IF NOT EXISTS 'nexo_user'@'%' IDENTIFIED BY 'SuaSenhaForte123!';
-
-GRANT ALL PRIVILEGES ON nexo_production.* TO 'nexo_user'@'%';
-
-FLUSH PRIVILEGES;
-```
-
-### 2.3. Testar Conexão
-
-```bash
-# Testar conexão com novo usuário
-docker exec -it $(docker ps -q -f name=mysql) \
-  mysql -u<SEU_USUARIO> -p'<SUA_SENHA_MYSQL>' <SEU_DATABASE>
-
-# Dentro do MySQL, teste:
-SELECT DATABASE();
-SHOW TABLES;
-EXIT;
-```
-
-### 2.4. Anotar Credenciais
-
-📝 **Guarde estas informações (você usará nos próximos passos):**
-
-```
-Host: mysql                    (nome do serviço Docker)
-Port: 3306                     (interno na rede dotskynet)
-Database: <SEU_DATABASE>
-User: <SEU_USUARIO>
-Password: <SUA_SENHA_MYSQL>
-```
-
----
-
-### 2.1. Acessar Portainer
-
-1. Acesse: `https://seu-portainer.com`
-2. **Stacks → Add stack**
-3. **Name**: `nexo-manual`
-
-### 2.2. Cole o Compose File
-
-**Opção 1: Copiar do arquivo local**
-Copie todo o conteúdo de `docker/docker-compose-manual-deploy.yml` e cole no editor do Portainer.
-
-**Opção 2: Usar arquivo do servidor (mais fácil)**
-No servidor, o arquivo já está em `/opt/nexo/docker/docker-compose-manual-deploy.yml`.
-
-No Portainer:
-1. **Upload** → Selecione o arquivo do servidor
-2. Ou **Web editor** → Cole o conteúdo
-
-**Opção 3: Direto via Git (Portainer suporta)**
-1. **Repository** → `https://github.com/seu-usuario/nexofw`
-2. **Compose path**: `docker/docker-compose-manual-deploy.yml`
-3. **Auto update**: Habilite para sincronizar automaticamente
-
-### 3.3. Deploy
-
-1. **Deploy the stack**
-2. Aguarde todos os serviços subirem (pode levar 2-3 minutos na primeira vez)
-
-### 2.4. Verificar Serviços
-
-**Portainer → Stacks → nexo-manual**
-
-Você deve ver:
-- ✅ `nexo-manual_app` (2/2 replicas)
-- ✅ `nexo-manual_redis` (1/1)
-- ✅ `nexo-manual_email_worker` (1/1)
-
-Observação:
-- MySQL e Kafka rodam fora desta stack na rede overlay `dotskynet` (serviços já existentes). Certifique-se de que os nomes de serviço estejam acessíveis na rede (`mysql`, `kafka_broker`).
-
----
-
-## 📁 Passo 3: Subir Arquivos via FTP
-
-### 3.1. Configurar Acesso SFTP no Servidor
-
-```bash
-# Criar usuário FTP
-sudo adduser nexoftp --disabled-password
-
-# Definir senha
-sudo passwd nexoftp
-
-# Dar permissões aos diretórios
-sudo usermod -aG www-data nexoftp
-sudo chown -R nexoftp:www-data /opt/nexo/site
-sudo chown -R nexoftp:www-data /opt/nexo/manager
-sudo chmod -R 775 /opt/nexo/site
-sudo chmod -R 775 /opt/nexo/manager
-```
-
-### 3.2. Conectar via FileZilla (ou outro cliente FTP)
-
-**Configurações:**
-- **Host**: `sftp://seu-servidor.com`
-- **Porta**: `22`
-- **Protocolo**: `SFTP`
-- **Usuário**: `nexoftp`
-- **Senha**: (a que você definiu)
-
-### 3.3. Estrutura de Diretórios Esperada
-
-Ao conectar via FTP, navegue até `/opt/nexo/` e copie os arquivos:
-
-```
-/opt/nexo/
-├── site/
-│   ├── app/
-│   │   └── inc/
-│   │       ├── kernel.php
-│   │       ├── urls.php
-│   │       ├── controller/
-│   │       ├── model/
-│   │       └── lib/
-│   ├── public_html/
-│   │   ├── index.php
-│   │   ├── assets/
-│   │   └── ui/
-│   └── cgi-bin/
-│       ├── send_mail.php
-│       └── kafka_email_worker.php
-│
-└── manager/
-    ├── app/
-    │   └── inc/
-    │       ├── kernel.php
-    │       ├── urls.php
-    │       ├── controller/
-    │       ├── model/
-    │       └── lib/
-    ├── public_html/
-    │   ├── index.php
-    │   ├── assets/
-    │   └── ui/
-    └── cgi-bin/
-        └── send_mail.php
-```
-
-### 3.4. Copiar Arquivos
-
-No FileZilla:
-
-1. **Lado esquerdo**: Seu computador local
-2. **Lado direito**: Servidor remoto (`/opt/nexo/`)
-3. Arraste a pasta `site/` para `/opt/nexo/site/`
-4. Arraste a pasta `manager/` para `/opt/nexo/manager/`
-
-**Tempo estimado**: 2-5 minutos (depende do tamanho)
-
-### 3.5. Ajustar Permissões (se necessário)
-
-```bash
-# SSH no servidor
-ssh usuario@servidor
-
-# Garantir permissões corretas
-sudo chown -R 33:33 /opt/nexo/site
-sudo chown -R 33:33 /opt/nexo/manager
-sudo chmod -R 755 /opt/nexo/site
-sudo chmod -R 755 /opt/nexo/manager
-
-# Permissões especiais para uploads
-sudo chmod -R 777 /opt/nexo/site/public_html/assets/upload
-sudo chmod -R 777 /opt/nexo/manager/public_html/assets/upload
-```
-
----
-
-## 🌐 Passo 4: Acessar os Sites
-
-### 4.1. Testar Acesso
-
-**Site Principal:**
-```
-https://dotsky.com.br
-```
-
-**Manager:**
-```
-https://manager.dotsky.com.br
-```
-
-### 4.2. Primeira Visita
-
-Se você ainda não copiou os arquivos, verá:
-- 🔴 **403 Forbidden** (diretório vazio)
-- 🔴 **404 Not Found** (sem index.php)
-
-Após copiar os arquivos:
-- ✅ Sites funcionando normalmente
-
----
-
-## 🔄 Passo 5: Atualizar Arquivos (Deploy de Novas Versões)
-
-### 5.1. Via FTP (Recomendado para Pequenas Mudanças)
-
-1. Conecte via FileZilla
-2. Navegue atéraiz do projeto
+# Criar diretório para o projeto
+sudo mkdir -p /opt/nexo
+sudo chown -R $USER:$USER /opt/nexo
 cd /opt/nexo
 
-# Atualizar código (pull das últimas alterações)
-sudo git pull origin main
+# Clonar repositório
+git clone https://github.com/seu-usuario/nexofw.git .
 
-# Ajustar permissões após atualização
-sudo chown -R 33:33 /opt/nexo/site
-sudo chown -R 33:33 /opt/nexo/manager
-sudo chmod -R 755 /opt/nexo/site
-sudo chmod -R 755 /opt/nexo/manager
-cd /opt/nexo/site
-
-# Inicializar Git (primeira vez)
-sudo -u www-data git init
-sudo -u www-data git remote add origin https://github.com/seu-usuario/nexofw.git
-
-# Atualizar código
-sudo -u www-data git fetch origin
-sudo -u www-data git reset --hard origin/main
-
-# Ajustar permissões
-sudo chown -R 33:33 /opt/nexo/site
-sudo chmod -R 755 /opt/nexo/site
+# Verificar estrutura
+ls -la
+# Esperado: manager/, site/, docker/, README.md, etc.
 ```
 
-### 5.3. Reiniciar Serviços (Apenas se Necessário)
-
-Normalmente **não é necessário** reiniciar, mas em casos específicos:
+### 1.3 Verificar Estrutura
 
 ```bash
-# Reiniciar apenas o app
-docker service update --force nexo-manual_app
+tree -L 2 -d
 
-# Reiniciar worker de email
-docker service update --force nexo-manual_email_worker
+# Esperado:
+# .
+# ├── docker
+# │   ├── core
+# │   └── prod       ← Arquivos de produção
+# ├── manager
+# │   ├── app
+# │   ├── cgi-bin
+# │   └── public_html
+# ├── site
+# │   ├── app
+# │   ├── cgi-bin
+# │   └── public_html
+# └── _data          ← Volumes persistentes
 ```
 
 ---
 
-## 🗄️ Passo 6: Configurar Banco de Dados
+## 🏗️ Passo 2: Build da Imagem Customizada
 
-### 6.1. Acessar MySQL
+### 2.1 Editar Configurações de VirtualHost
 
+Os arquivos de configuração do Apache precisam ter seus domínios atualizados:
+
+**Editar Site**:
 ```bash
-# Via docker exec
-docker exec -it $(docker ps -q -f name=nexo-manual_mysql) mysql -u root -p12345
-
-# Ou via Portainer Console (mais fácil)
-# Portainer → Containers → nexo-manual_mysql → Console
-# Comando: mysql -u root -p12345
+nano /opt/nexo/docker/prod/site.conf
 ```
 
-### 6.2. Criar Tabelas
-
-```sql
-USE mysql_nexo;
-
--- Exemplo: Tabela de usuários
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    name VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Exemplo: Tabela de emails (para Kafka)
-CREATE TABLE email_queue (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    recipient VARCHAR(255) NOT NULL,
-    subject VARCHAR(500),
-    body TEXT,
-    status ENUM('pending', 'sent', 'failed') DEFAULT 'pending',
-    attempts INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    sent_at TIMESTAMP NULL,
-    INDEX idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+Altere:
+```apache
+ServerName seudominio.com
+ServerAdmin admin@seudominio.com
 ```
 
-### 6.3. Importar Dump Existente
+**Editar Manager**:
+```bash
+nano /opt/nexo/docker/prod/manager.conf
+```
+
+Altere:
+```apache
+ServerName manager.seudominio.com
+ServerAdmin admin@seudominio.com
+```
+
+### 2.2 Build da Imagem
 
 ```bash
-# Copiar dump via FTP para /opt/nexo/
-# Exemplo: database.sql
+cd /opt/nexo/docker/prod
 
-# SSH no servidor
-ssh usuario@servidor
+# Build da imagem (demora 5-10min na primeira vez)
+docker build -t nexo-app:latest .
 
-# Importar
-docker exec -i $(docker ps -q -f name=nexo-manual_mysql) \
-  mysql -u root -p12345 mysql_nexo < /opt/nexo/database.sql
+# Aguarde instalação de extensões PHP (redis, rdkafka, gd, etc)
+```
+
+**Saída esperada**:
+```
+[+] Building 450.2s (15/15) FINISHED
+ => [internal] load build definition
+ => => transferring dockerfile: 1.2kB
+ => [internal] load .dockerignore
+ => ...
+ => exporting to image
+ => => exporting layers
+ => => writing image sha256:abc123...
+ => => naming to docker.io/library/nexo-app:latest
+```
+
+### 2.3 Verificar Imagem Criada
+
+```bash
+docker images | grep nexo-app
+
+# Esperado:
+# nexo-app   latest   abc123def456   2 minutes ago   580MB
 ```
 
 ---
 
-## 🧪 Passo 7: Testar Integrações (sem criar arquivos de teste)
+## 🚀 Passo 3: Deploy no Portainer
 
-### 7.1. Testar Redis (Cache/Sessions)
-
-```bash
-# Teste rápido via PHP inline no container APP
-docker exec $(docker ps -q -f name=nexo-manual_app | head -1) php -r "\
-$r=new Redis(); \
-$r->connect('redis',6379); \
-$r->set('test','ok'); \
-echo 'Redis: '.($r->get('test')==='ok'?'OK':'FAIL');"
-```
-
-### 7.2. Testar MySQL
+### 3.1 Preparar docker-compose-deploy.yml
 
 ```bash
-docker exec $(docker ps -q -f name=nexo-manual_app | head -1) php -r "\
-$m=new mysqli('mysql','nexo_user','Nx#2024$Dotsky!Prod','nexo_dotsky'); \
-if($m->connect_error){die('FAIL: '.$m->connect_error);} \
-echo 'MySQL: OK';"
+cd /opt/nexo/docker
+cp docker-compose-deploy.yml.example docker-compose-deploy.yml
+nano docker-compose-deploy.yml
 ```
 
-### 7.3. Testar Kafka (Email Worker)
+### 3.2 Atualizar Placeholders
 
-Configuração final obrigatória:
-- **Broker**: `kafka_broker:9092`
-- **Tópico de emails**: `nexo_emails_site` (não use `emails`)
-- **Consumer group**: `email-worker-group`
-- **Worker**: `auto.offset.reset=earliest`, `enable.auto.commit=true`
+Substitua os seguintes valores:
 
-Verificar worker em tempo real:
-```bash
-docker service logs nexo-manual_email_worker -f --since 1m
+| Placeholder | Exemplo | Descrição |
+|-------------|---------|-----------|
+| `<NOME_APP>` | `nexo` | Nome do seu app |
+| `<SEU_DOMINIO>` | `seusite.com` | Domínio principal |
+| `<SUA_IMAGEM_CUSTOMIZADA>` | `nexo-app:latest` | Imagem que você criou |
+| `<SUA_REDE_INTERNET_DO_PORTAINER>` | `dotskynet` | Nome da rede overlay |
+
+**Exemplo de arquivo editado**:
+
+```yaml
+services:
+  app:
+    image: nexo-app:latest  # ← SUA IMAGEM
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=dotskynet"  # ← SUA REDE
+        
+        # Site (seusite.com)
+        - "traefik.http.routers.nexo-site.rule=Host(`seusite.com`)"  # ← SEU DOMÍNIO
+        - "traefik.http.routers.nexo-site.entrypoints=websecure"
+        - "traefik.http.routers.nexo-site.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.nexo-site.loadbalancer.server.port=80"
+        
+        # Manager (manager.seusite.com)
+        - "traefik.http.routers.nexo-manager.rule=Host(`manager.seusite.com`)"  # ← SEU DOMÍNIO
+        - "traefik.http.routers.nexo-manager.entrypoints=websecure"
+        - "traefik.http.routers.nexo-manager.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.nexo-manager.loadbalancer.server.port=8080"
+    
+    volumes:
+      - /opt/nexo/site:/var/www/site:rw
+      - /opt/nexo/manager:/var/www/manager:rw
+      - /opt/nexo/_data/logs/apache2:/var/log/apache2:rw
+      - /opt/nexo:/git:rw  # Para git pull
+    
+    networks:
+      - dotskynet  # ← SUA REDE
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  redis:
+    image: redis:7-alpine
+    deploy:
+      replicas: 1
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - dotskynet  # ← SUA REDE
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  email_worker_site:
+    image: nexo-app:latest  # ← SUA IMAGEM
+    deploy:
+      replicas: 1
+    volumes:
+      - /opt/nexo/site:/var/www/site:ro
+    networks:
+      - dotskynet  # ← SUA REDE
+    entrypoint: []
+    command: ["php", "/var/www/site/cgi-bin/kafka_email_worker.php"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f kafka_email_worker.php || exit 1"]
+      interval: 30s
+
+  email_worker_manager:
+    image: nexo-app:latest  # ← SUA IMAGEM
+    deploy:
+      replicas: 1
+    volumes:
+      - /opt/nexo/manager:/var/www/manager:ro
+    networks:
+      - dotskynet  # ← SUA REDE
+    entrypoint: []
+    command: ["php", "/var/www/manager/cgi-bin/kafka_email_worker.php"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f kafka_email_worker.php || exit 1"]
+      interval: 30s
+
+networks:  
+  dotskynet:  # ← SUA REDE
+    external: true
+
+volumes:
+  redis-data:
+    driver: local
 ```
 
-Se houver mensagens não consumidas (LAG), resetar offsets do grupo:
-```bash
-docker exec <kafka_container_name> /opt/kafka/bin/kafka-consumer-groups.sh \
-    --bootstrap-server localhost:9092 \
-    --group email-worker-group \
-    --topic nexo_emails_site \
-    --reset-offsets \
-    --to-earliest \
-    --execute
+### 3.3 Deploy no Portainer
+
+**Via Interface Web**:
+
+1. Acesse **Portainer** → **Stacks** → **Add stack**
+2. **Name**: `nexo-app`
+3. **Build method**: **Web editor**
+4. Cole o conteúdo do seu `docker-compose-deploy.yml` editado
+5. Clique em **Deploy the stack**
+
+**Aguarde 2-3 minutos** para:
+- Criação dos serviços
+- Pull das imagens (redis)
+- Inicialização dos containers
+- Health checks
+
+### 3.4 Verificar Deploy
+
+No Portainer → **Stacks** → **nexo-app**:
+
+```
+✓ app (2/2 replicas running)
+✓ redis (1/1 running)
+✓ email_worker_site (1/1 running)
+✓ email_worker_manager (1/1 running)
 ```
 
-Notas avançadas:
-- Se o tópico tiver múltiplas partições, o worker fará rebalance. Logs de rebalance aparecem como `[REBALANCE] Partições ATRIBUÍDAS`.
-- Producers devem enviar para `nexo_emails_site`. Mensagens em outros tópicos não serão processadas.
+Todos devem estar com status **"Running"** (verde).
 
 ---
 
-## 🔍 Passo 8: Monitoramento e Logs
+## ⚙️ Passo 4: Configurar kernel.php
 
-### 8.1. Ver Logs do Apache
+### 4.1 Manager
 
 ```bash
-# SSH no servidor
-tail -f /opt/nexo/logs/apache2/site_access.log
-tail -f /opt/nexo/logs/apache2/site_error.log
-tail -f /opt/nexo/logs/apache2/manager_error.log
+cd /opt/nexo
+nano manager/app/inc/kernel.php
 ```
 
-### 8.2. Ver Logs dos Serviços
+**Conteúdo**:
+```php
+<?php
 
-```bash
-# App
-docker service logs nexo-manual_app -f
+// ===== TIMEZONE =====
+date_default_timezone_set("America/Sao_Paulo");
 
-# Redis
-docker service logs nexo-manual_redis -f
+// ===== ENCODING E UPLOAD =====
+ini_set("default_charset", "UTF-8");
+ini_set("post_max_size", "4096M");
+ini_set("upload_max_filesize", "4096M");
 
-# Email Worker
-docker service logs nexo-manual_email_worker -f
+// ===== BANCO DE DADOS =====
+define("DB_HOST", "mysql");              // Nome do serviço MySQL (stack externa)
+define("DB_NAME", "seu_banco");          // Nome do database
+define("DB_USER", "seu_usuario");        // Usuário MySQL
+define("DB_PASS", "sua_senha_forte");    // Senha MySQL
+
+// ===== REDIS (Cache) =====
+define("REDIS_HOST", "redis");           // Nome do serviço Redis (da stack nexo-app)
+define("REDIS_PORT", 6379);
+define("REDIS_PREFIX", "nexo:manager:");
+define("REDIS_DATABASE", 0);
+define("REDIS_ENABLED", true);
+define("REDIS_DEFAULT_TTL", 3600);
+
+// ===== KAFKA (Emails) =====
+define("KAFKA_HOST", "kafka");           // Nome do serviço Kafka (stack externa)
+define("KAFKA_PORT", "9092");
+define("KAFKA_TOPIC_EMAIL", "nexo_manager_emails");
+define("KAFKA_CONSUMER_GROUP", "nexo-email-worker-group");
+
+// ===== EMAIL (SMTP) =====
+define("mail_from_name", "Seu Projeto - Manager");
+define("mail_from_mail", "noreply@seudominio.com");
+define("mail_from_host", "smtp.gmail.com");      // Servidor SMTP
+define("mail_from_port", "587");                 // Porta TLS
+define("mail_from_user", "seu-email@gmail.com"); // Email SMTP
+define("mail_from_pwd", "sua-senha-app-gmail");  // Senha de App
+
+// ===== APLICAÇÃO =====
+define("cAppKey", "nexo_manager_session");
+define("cPaginate", 150);
+define("cTitle", "Nexo Manager");
+
+// ===== PATHS =====
+define("cAppRoot", "/");
+define("cRootServer", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot")));
+define("cRootServer_APP", sprintf("%s%s", $_SERVER["DOCUMENT_ROOT"], constant("cAppRoot") . "../app"));
+define("cFrontend", sprintf("https://%s%s", $_SERVER["HTTP_HOST"], constant("cAppRoot")));
+define("cAssets", sprintf("%s%s", constant("cFrontend"), "assets/"));
+
+// ===== SESSÃO =====
+define("SESSION_LIFETIME", 7200);
+define("SESSION_USE_REDIS", false);
+
+// ===== UPLOAD =====
+define("UPLOAD_DIR", "/var/www/manager/public_html/assets/upload/");
+define("UPLOAD_MAX_SIZE", 10);
+define("UPLOAD_ALLOWED_TYPES", "jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx");
+
+// ===== LOG =====
+define("LOG_DIR", "/var/log/nexo/");
+define("LOG_LEVEL", "debug");
 ```
 
-### 8.3. Verificar Saúde dos Serviços
+### 4.2 Site
 
 ```bash
-# Ver status de todos os serviços
-docker service ls | grep nexo-manual
+nano site/app/inc/kernel.php
+```
 
-# Ver detalhes de um serviço
-docker service ps nexo-manual_app
+**Copie do manager e altere**:
+```php
+define("REDIS_PREFIX", "nexo:site:");              // Prefixo diferente
+define("REDIS_DATABASE", 1);                        // Database diferente
+define("KAFKA_TOPIC_EMAIL", "nexo_site_emails");   // Tópico diferente
+define("mail_from_name", "Seu Projeto - Site");
+define("cAppKey", "nexo_site_session");
+define("cTitle", "Nexo Site");
+define("UPLOAD_DIR", "/var/www/site/public_html/assets/upload/");
 
-# Ver replicas e status
-docker service inspect nexo-manual_app --pretty
+// cFrontend e cRootServer são gerados automaticamente pelos sprintf
+// mas o HTTP_HOST vai apontar para seudominio.com ao invés de manager.seudominio.com
+```
+
+### 4.3 Verificar Conectividade
+
+```bash
+# Entrar no container app
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_app | head -1) bash
+
+# Testar MySQL
+mysql -h mysql -u seu_usuario -p -e "SELECT 1;"
+# Esperado: +---+
+#           | 1 |
+
+# Testar Redis
+redis-cli -h redis ping
+# Esperado: PONG
+
+# Testar Kafka (verificar se host responde)
+ping -c 1 kafka
+# Esperado: 1 packets transmitted, 1 received
+
+exit
 ```
 
 ---
 
-## 🚨 Troubleshooting
+## 📚 Passo 5: Instalar Dependências Composer
 
-### Problema: Site retorna 403 Forbidden
+### 5.1 Manager
 
-**Causa**: Diretório vazio ou sem permissões
-
-**Solução:**
 ```bash
-# Verificar se arquivos existem
-ls -la /opt/nexo/site/public_html/
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_app | head -1) bash
 
-# Ajustar permissões
-sudo chown -R 33:33 /opt/nexo/site
-sudo chmod -R 755 /opt/nexo/site
+cd /var/www/manager/app/inc/lib
+composer install --no-dev --optimize-autoloader
+
+# Esperado:
+# Installing dependencies from lock file
+# Package operations: X installs, 0 updates, 0 removals
+# ...
+# Generating optimized autoload files
 ```
 
-### Problema: Site retorna 500 Internal Server Error
+### 5.2 Site
 
-**Causa**: Erro PHP ou extensão faltando
+```bash
+cd /var/www/site/app/inc/lib
+composer install --no-dev --optimize-autoloader
 
-**Solução:**
+exit
+```
+
+---
+
+## ✅ Verificar Instalação
+
+### Teste 1: Acesso HTTP
+
+```bash
+curl -I https://seudominio.com
+# Esperado: HTTP/2 200
+
+curl -I https://manager.seudominio.com
+# Esperado: HTTP/2 200
+```
+
+### Teste 2: SSL/TLS
+
+```bash
+curl -v https://seudominio.com 2>&1 | grep -i "SSL"
+# Esperado: SSL certificate verify ok
+```
+
+### Teste 3: Health Check
+
+Crie arquivo `/opt/nexo/site/public_html/health.php`:
+
+```php
+<?php
+require_once __DIR__ . '/../app/inc/kernel.php';
+
+$health = [
+    'status' => 'ok',
+    'php' => phpversion(),
+    'mysql' => 'checking...',
+    'redis' => 'checking...',
+];
+
+try {
+    $pdo = new PDO(
+        'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,
+        DB_USER,
+        DB_PASS
+    );
+    $health['mysql'] = 'ok';
+} catch (Exception $e) {
+    $health['mysql'] = 'error: ' . $e->getMessage();
+    $health['status'] = 'degraded';
+}
+
+try {
+    $redis = new Redis();
+    $redis->connect(REDIS_HOST, REDIS_PORT);
+    if (defined('REDIS_PASSWORD') && REDIS_PASSWORD) {
+        $redis->auth(REDIS_PASSWORD);
+    }
+    $redis->ping();
+    $health['redis'] = 'ok';
+} catch (Exception $e) {
+    $health['redis'] = 'error: ' . $e->getMessage();
+    $health['status'] = 'degraded';
+}
+
+header('Content-Type: application/json');
+echo json_encode($health, JSON_PRETTY_PRINT);
+```
+
+Acesse:
+```bash
+curl https://seudominio.com/health.php
+
+# Esperado:
+# {
+#   "status": "ok",
+#   "php": "8.3.x",
+#   "mysql": "ok",
+#   "redis": "ok"
+# }
+```
+
+---
+
+## 🔄 Atualizações com Git Pull
+
+### Workflow
+
+1. **Desenvolvimento local** → Commit e push para Git
+2. **Servidor** → `git pull` para atualizar código
+3. **Containers** → Usam volumes compartilhados (atualização automática!)
+
+### Atualizar Código
+
+```bash
+ssh usuario@seu-servidor.com
+cd /opt/nexo
+
+# Puxar atualizações
+git pull origin main
+
+# Esperado:
+# Updating abc1234..def5678
+# Fast-forward
+#  site/public_html/index.php | 10 +++++-----
+#  1 file changed, 5 insertions(+), 5 deletions(-)
+```
+
+**Pronto!** Os volumes compartilhados fazem os containers usarem o código atualizado imediatamente.
+
+### Quando Precisa Restart?
+
+**NÃO precisa** restart para:
+- ✅ Alterações em arquivos PHP
+- ✅ Novos arquivos adicionados
+- ✅ Alterações em HTML/CSS/JS
+- ✅ Atualizações de views
+
+**PRECISA restart** para:
+- ⚠️ Alterações em `kernel.php`
+- ⚠️ Alterações nas configurações Apache (VirtualHost)
+- ⚠️ Atualização de dependências Composer
+- ⚠️ Alterações na imagem Docker (Dockerfile)
+
+### Restart Manual
+
+```bash
+# Via Portainer Web:
+# Stacks → nexo-app → Services → app → Restart service
+
+# Via CLI:
+docker service update --force nexo-app_app
+```
+
+### Rebuild de Imagem (Mudanças no Dockerfile)
+
+```bash
+cd /opt/nexo/docker/prod
+
+# Rebuild
+docker build -t nexo-app:latest .
+
+# Update service para usar nova imagem
+docker service update --image nexo-app:latest nexo-app_app
+
+# Também atualizar workers
+docker service update --image nexo-app:latest nexo-app_email_worker_site
+docker service update --image nexo-app:latest nexo-app_email_worker_manager
+```
+
+---
+
+## 📊 Monitoramento
+
+### Portainer Dashboard
+
+Acesse: `https://portainer.seudominio.com`
+
+Visualize:
+- **Stacks** → Estado dos serviços
+- **Containers** → CPU/RAM por container
+- **Logs** → Em tempo real
+- **Stats** → Gráficos de uso
+
+### Logs via CLI
+
+```bash
+# Logs da aplicação (todas replicas)
+docker service logs -f nexo-app_app
+
+# Logs de uma replica específica
+docker logs -f <container_id>
+
+# Logs do email worker (site)
+docker service logs -f nexo-app_email_worker_site
+
+# Logs do email worker (manager)
+docker service logs -f nexo-app_email_worker_manager
+
+# Últimas 100 linhas
+docker service logs --tail 100 nexo-app_app
+
+# Filtrar por erro
+docker service logs nexo-app_app 2>&1 | grep -i error
+```
+
+### Verificar Saúde dos Serviços
+
+```bash
+# Listar serviços e replicas
+docker service ls
+
+# Detalhar um serviço
+docker service ps nexo-app_app
+
+# Inspecionar
+docker service inspect nexo-app_app --pretty
+```
+
+### Monitorar Workers Kafka
+
+```bash
+# Ver se está consumindo mensagens
+docker service logs -f nexo-app_email_worker_site | grep -i "processing\|sent"
+
+# Ver filas no Kafka
+# (assumindo que você tem Kafka UI rodando)
+# Acesse: http://seu-servidor:8080
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### Problema: Stack não sobe
+
+```bash
+# Ver logs da stack
+docker service ls | grep nexo-app
+
+# Ver por que serviço não subiu
+docker service ps nexo-app_app --no-trunc
+
+# Comum: Imagem não encontrada
+# Solução: Verificar se fez build da imagem
+docker images | grep nexo-app
+
+# Se não existir, fazer build
+cd /opt/nexo/docker/prod
+docker build -t nexo-app:latest .
+```
+
+### Problema: Erro 502 Bad Gateway
+
+```bash
+# Verificar se app está rodando
+docker service ps nexo-app_app
+
+# Ver logs do Traefik
+docker service logs traefik_traefik | grep -i error
+
+# Comum: Labels do Traefik errados
+# Verificar docker-compose-deploy.yml:
+# - Nome da rede deve ser o mesmo do Traefik
+# - Porta deve ser 80 (site) e 8080 (manager)
+```
+
+### Problema: Aplicação retorna erro 500
+
 ```bash
 # Ver logs PHP
-tail -f /opt/nexo/logs/apache2/site_error.log
+docker service logs nexo-app_app | tail -50
 
-# Verificar extensões instaladas
-docker exec $(docker ps -q -f name=nexo-manual_app | head -1) php -m
+# Comum: kernel.php não configurado
+# Verificar arquivo
+cat /opt/nexo/manager/app/inc/kernel.php | grep "DB_HOST"
 
-# Reiniciar serviço
-docker service update --force nexo-manual_app
+# Comum: MySQL não acessível
+# Testar conexão
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_app | head -1) \
+  mysql -h mysql -u seu_usuario -p -e "SELECT 1;"
 ```
 
-### Problema: Não consigo conectar no MySQL
+### Problema: SSL não funciona
 
-**Causa**: Serviço não iniciou completamente
-
-**Solução:**
 ```bash
-# Verificar healthcheck
-docker service ps nexo-manual_mysql
+# Ver certificados do Traefik
+docker service logs traefik_traefik | grep -i "certificate"
+
+# Comum: DNS não propagado
+# Verificar:
+nslookup seudominio.com
+# Deve apontar para IP do servidor
+
+# Forçar renovação (se certificado expirou)
+# Via Portainer: Restart stack do Traefik
+```
+
+### Problema: Email worker não processa
+
+```bash
+# Verificar se worker está rodando
+docker service ps nexo-app_email_worker_site
 
 # Ver logs
-docker service logs nexo-manual_mysql -f
+docker service logs -f nexo-app_email_worker_site
 
-# Aguardar 30s e tentar novamente
+# Comum: Kafka não acessível
+# Testar:
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_email_worker_site) \
+  ping -c 1 kafka
+
+# Comum: Tópico não existe
+# Criar tópico no Kafka (via Kafka UI ou CLI)
 ```
 
-### Problema: Redis não está salvando sessões
+### Problema: Redis não conecta
 
-**Causa**: PHP não consegue conectar no Redis
-
-**Solução:**
 ```bash
+# Verificar se Redis está rodando
+docker service ps nexo-app_redis
+
 # Testar conexão
-docker exec $(docker ps -q -f name=nexo-manual_app | head -1) php -r "
-\$redis = new Redis();
-\$redis->connect('redis', 6379);
-\$redis->set('test', 'ok');
-echo \$redis->get('test');
-"
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_app | head -1) \
+  redis-cli -h redis ping
 
-# Deve retornar: ok
+# Se usar Redis de stack externa, verificar rede
+docker network inspect dotskynet | grep -i redis
 ```
 
-### Problema: Email Worker não está processando
+---
 
-**Causa**: Kafka não está pronto ou worker crashou
+## 📚 Comandos Úteis
 
-**Solução:**
+### Docker Service
+
 ```bash
-# 1) Ver logs do worker
-docker service logs nexo-manual_email_worker -f
+# Listar serviços
+docker service ls
 
-# 2) Validar broker acessível a partir do worker
-docker exec $(docker ps -q -f name=nexo-manual_email_worker | head -1) sh -c "nc -zv kafka_broker 9092 || ping -c 1 kafka_broker"
+# Escalar replicas
+docker service scale nexo-app_app=3
 
-# 3) Resetar offsets do consumer group (se houver LAG)
-docker exec <kafka_container_name> /opt/kafka/bin/kafka-consumer-groups.sh \
-    --bootstrap-server localhost:9092 \
-    --group email-worker-group \
-    --topic nexo_emails_site \
-    --reset-offsets \
-    --to-earliest \
-    --execute
+# Restart forçado
+docker service update --force nexo-app_app
 
-# 4) Reiniciar worker
-docker service update --force nexo-manual_email_worker
+# Remover serviço
+docker service rm nexo-app_app
 ```
 
-### Problema: PHP Fatal error: Failed opening required 'vendor/autoload.php'
+### Git
 
-**Causa**: Dependências do Composer não instaladas
-
-**Solução:**
 ```bash
-# SSH no servidor
-ssh usuario@servidor
+# Status
+git status
 
-# Instalar dependências (com --ignore-platform-reqs)
-cd /opt/nexo/site/app/inc/lib
-sudo docker run --rm -v "$PWD":/app composer:latest install --no-dev --ignore-platform-reqs
+# Ver alterações
+git diff
 
-cd /opt/nexo/manager/app/inc/lib
-sudo docker run --rm -v "$PWD":/app composer:latest install --no-dev --ignore-platform-reqs
+# Puxar atualizações
+git pull origin main
 
-# Ajustar permissões
-sudo chown -R 33:33 /opt/nexo/site/app/inc/lib/vendor
-sudo chown -R 33:33 /opt/nexo/manager/app/inc/lib/vendor
+# Ver histórico
+git log --oneline -10
 
-# Reiniciar serviços
-docker service update --force nexo-manual_app
-docker service update --force nexo-manual_email_worker
+# Reverter para commit anterior
+git checkout <commit_hash> .
 ```
 
-**Por que `--ignore-platform-reqs`?**
-- O Composer roda em imagem básica sem extensões PHP (redis, rdkafka)
-- As extensões existem na imagem `nexofw-app:latest` onde o código será executado
-- Ignorar requisitos de plataforma permite instalação das dependências
+### Composer
 
----
-
-## 📊 Comparação: CI/CD vs Manual Deploy
-
-| Aspecto | CI/CD (GitHub Actions) | Manual Deploy (FTP) |
-|---------|------------------------|---------------------|
-| **Setup Inicial** | Complexo (30min) | Simples (10min) |
-| **Deploy** | Automático (git push) | Manual (FTP upload) |
-| **Velocidade** | 5-8 minutos | Instantâneo |
-| **Rollback** | git revert + redeploy | Sobrescrever arquivos antigos |
-| **Auditoria** | Git history completo | Sem histórico |
-| **Testes** | CI rodando testes | Manual |
-| **Múltiplos Devs** | Fácil (PRs) | Difícil (conflitos) |
-| **Zero Downtime** | Sim (rolling update) | Depende |
-| **Recomendado para** | Produção profissional | Desenvolvimento/teste |
-
----
-
-## 🎯 Vantagens desta Abordagem
-
-✅ **Simples**: Não precisa entender Docker, CI/CD ou Git  
-✅ **Rápido**: Deploy em segundos via FTP  
-✅ **Flexível**: Edite arquivos diretamente no servidor  
-✅ **Independente**: Sem dependência de GitHub, GHCR ou registry  
-✅ **Familiar**: Usa FTP, igual hospedagem compartilhada tradicional
-
-## ⚠️ Desvantagens
-
-❌ **Sem histórico**: Não tem controle de versão automático  
-❌ **Sem testes**: Não roda testes antes do deploy  
-❌ **Sem rollback fácil**: Precisa manter backups manualmente  
-❌ **Múltiplos devs**: Difícil coordenar mudanças simultâneas
-
----
-
-## 🔄 Migração para CI/CD (Opcional)
-
-Quando estiver pronto para processo mais profissional:
-
-1. **Mantenha os arquivos no Git**
-2. **Configure GitHub Actions** (veja `PRODUCTION_DEPLOY.md`)
-3. **Use esta stack como base**, mas mude imagem:
-   ```yaml
-   image: ghcr.io/seu-usuario/nexofw:latest
-   ```
-4. **Deploy automático** após merge na main
-
-Os volumes (`/opt/nexo/site` e `/opt/nexo/manager`) podem ser mantidos ou removidos (arquivos ficarão dentro da imagem Docker).
-
----
-
-## 📚 Próximos Passos
-
-1. ✅ Clonar repositório no servidor
-2. ✅ Build da imagem customizada (nexofw-app:latest)
-3. ✅ Deploy da stack no Portainer (usando rede dotskynet existente)
-4. ✅ Configurar FTP/SFTP
-5. ✅ Copiar arquivos via FTP
-6. ✅ Configurar banco de dados
-7. ✅ Testar integrações (Redis, MySQL, Kafka)
-8. ✅ Monitorar logs
-9. 🔜 Automatizar backups
-10. 🔜 Configurar monitoramento (Grafana/Prometheus)
-11. 🔜 Migrar para CI/CD quando necessário
-
----
-
-## 🎯 Vantagens da Imagem Customizada
-
-✅ **Performance**: Containers iniciam em 5-10 segundos  
-✅ **Confiabilidade**: Extensões testadas e validadas no build  
-✅ **Escalabilidade**: Fácil replicar e escalar horizontalmente  
-✅ **Manutenibilidade**: Configurações versionadas no Dockerfile  
-✅ **Deploy rápido**: Rollout de novas versões em segundos  
-✅ **Zero downtime**: Rolling updates automáticos
-
----
-
-## 🔄 Workflow de Atualização
-
-```
-1. Código PHP (site/manager)
-   └─> FTP ou git pull
-   └─> Atualização instantânea (sem rebuild)
-
-2. Configs (php.ini, *.conf)
-   └─> Editar em docker/prod/
-   └─> Rebuild da imagem (3-5min)
-   └─> Update dos serviços
-
-3. Extensões PHP
-   └─> Adicionar no Dockerfile
-   └─> Rebuild da imagem
-   └─> Update dos serviços
-```
-
----
-
-**🎉 Pronto! Stack otimizada e pronta para produção!**
-
----
-
-## 🆘 Suporte
-
-Se algo não funcionar:
-
-1. **Verifique logs** (Passo 8)
-2. **Teste integrações** (Passo 7)
-3. **Revise troubleshooting** (acima)
-4. **Reinicie serviços** se necessário
-
-**Comandos úteis:**
 ```bash
-# Status geral
-docker service ls | grep nexo-manual
+# Dentro do container
+docker exec -it $(docker ps -q -f label=com.docker.swarm.service.name=nexo-app_app | head -1) bash
 
-# Logs de todos os serviços
-docker service logs nexo-manual_app -f
+# Atualizar dependências
+cd /var/www/manager/app/inc/lib
+composer update
 
-# Reiniciar tudo
-docker stack rm nexo-manual
-docker stack deploy -c docker-compose-manual-deploy.yml nexo-manual
+# Adicionar nova dependência
+composer require phpmailer/phpmailer
 
-# Diagnóstico de Kafka (opc.)
-docker exec <kafka_container_name> /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
-docker exec <kafka_container_name> /opt/kafka/bin/kafka-topics.sh --describe --topic nexo_emails_site --bootstrap-server localhost:9092
+exit
 ```
 
 ---
 
-**🎉 Pronto! Agora você tem um ambiente PHP completo gerenciado via FTP!**
+## ✅ Checklist de Deploy e Traefik rodando (Redis será criado na stack nexo-app)
+
+- [ ] VPS com Docker, Swarm, Portainer configurados
+- [ ] Stacks MySQL, Kafka, Redis, Traefik rodando
+- [ ] Rede overlay criada e anotada
+- [ ] Projeto clonado em `/opt/nexo`
+- [ ] Arquivos `site.conf` e `manager.conf` com domínios corretos
+- [ ] Imagem `nexo-app:latest` criada com build
+- [ ] `docker-compose-deploy.yml` editado com placeholders
+- [ ] Stack `nexo-app` criada no Portainer
+- [ ] Todos serviços "Running" (app, redis, workers)
+- [ ] Arquivos `kernel.php` configurados (Manager + Site)
+- [ ] Dependências Composer instaladas
+- [ ] DNS apontado para servidor
+- [ ] SSL/TLS funcionando (HTTPS)
+- [ ] `/health.php` retornando `status: ok`
+- [ ] Email workers processando mensagens
+
+---
+
+## 🚀 Próximos Passos
+
+1. **Configurar Backup** - Agendar backup do MySQL e uploads
+2. **Monitorar Performance** - Grafana + Prometheus (opcional)
+3. **Escalar** - Aumentar replicas conforme demanda
+4. **CI/CD** - Automatizar deploy com GitHub Actions
+5. **Logs Centralizados** - ELK Stack ou similar
+
+---
+
+## 📞 Suporte
+
+Para mais informações:
+
+- **Desenvolvimento**: [README.md](README.md)
+- **Emails**: [KAFKA_EMAIL.md](KAFKA_EMAIL.md)
+- **Cache**: [REDIS.md](REDIS.md)
+
+---
+
+**Nexo Framework - Deploy em Produção**  
+Portainer + Docker Swarm + Git  
+Última atualização: Thu Jan 02 2026
