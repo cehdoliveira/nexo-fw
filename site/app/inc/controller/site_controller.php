@@ -10,7 +10,7 @@ class site_controller
         }
 
         // Definir controllers Alpine.js necessários para esta página
-        $alpineControllers = ['counterController', 'contactController'];
+        $alpineControllers = ['counter', 'contact'];
 
         include(constant("cRootServer") . "ui/common/head.php");
         include(constant("cRootServer") . "ui/common/header.php");

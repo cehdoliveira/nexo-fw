@@ -9,7 +9,7 @@
     // Verificar se existem controllers definidos para esta página
     if (isset($alpineControllers) && is_array($alpineControllers) && count($alpineControllers) > 0) {
         foreach ($alpineControllers as $controller) {
-            print('<script src="' . constant('cFrontend') . 'assets/js/alpine/' . $controller . '.js"></script>' . "\n    ");
+            print('<script src="' . constant('cFrontend') . 'assets/js/alpine/' . $controller . 'Controller.js"></script>' . "\n    ");
         }
     }
     ?>
@@ -19,6 +19,6 @@
 
     <!-- Custom JS -->
     <script src="<?php printf("%s%s", constant('cFrontend'), "assets/js/main.js"); ?>"></script>
-    </body>
+</body>
 
-    </html>
+</html>

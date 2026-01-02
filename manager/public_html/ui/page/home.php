@@ -182,35 +182,52 @@
             <!-- Tabela de Dados com Alpine.js -->
             <div class="row">
                 <div class="col-lg-12">
-                    <div class="card shadow mb-4">
-                        <div class="card-header py-3 d-flex justify-content-between align-items-center" x-data="usersController">
+                    <div class="card shadow mb-4" x-data="usersController">
+                        <div class="card-header py-3 d-flex justify-content-between align-items-center">
                             <h6 class="m-0 font-weight-bold text-primary">Últimos Usuários</h6>
                             <input type="text" class="form-control form-control-sm w-25" placeholder="Buscar..." x-model="search">
                         </div>
                         <div class="card-body">
-                            <div class="table-responsive" x-data="usersController">
-                                <table class="table table-bordered table-hover">
+                            <!-- Loading Spinner -->
+                            <div x-show="loading" class="text-center py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Carregando...</span>
+                                </div>
+                                <p class="mt-3 text-muted">Carregando usuários...</p>
+                            </div>
+
+                            <!-- Tabela -->
+                            <div x-show="!loading" class="table-responsive">
+                                <table class="table table-bordered table-hover table-sm">
                                     <thead class="table-light">
                                         <tr>
                                             <th>ID</th>
                                             <th>Nome</th>
                                             <th>Email</th>
-                                            <th>Função</th>
+                                            <th>CPF</th>
+                                            <th>Telefone</th>
                                             <th>Status</th>
+                                            <th>Último Acesso</th>
                                             <th>Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <template x-for="user in filteredUsers" :key="user.id">
+                                        <template x-for="user in paginatedUsers" :key="user.id">
                                             <tr :class="{ 'table-active': selectedUser === user.id }">
                                                 <td x-text="user.id"></td>
                                                 <td x-text="user.name"></td>
                                                 <td x-text="user.email"></td>
                                                 <td>
-                                                    <span class="badge" :class="getRoleBadgeClass(user.role)" x-text="user.role"></span>
+                                                    <small x-text="user.cpf"></small>
+                                                </td>
+                                                <td>
+                                                    <small x-text="user.phone"></small>
                                                 </td>
                                                 <td>
                                                     <span class="badge" :class="getStatusBadgeClass(user.status)" x-text="user.status"></span>
+                                                </td>
+                                                <td>
+                                                    <small x-text="formatDate(user.last_login)"></small>
                                                 </td>
                                                 <td>
                                                     <button @click="viewUser(user)" class="btn btn-sm btn-info" title="Visualizar">
@@ -227,8 +244,39 @@
                                         </template>
                                     </tbody>
                                 </table>
-                                <div x-show="selectedUser" x-transition class="alert alert-info mt-3">
-                                    Usuário selecionado: ID <span x-text="selectedUser"></span>
+                                <div x-show="filteredUsers.length === 0 && !loading" class="alert alert-info mt-3">
+                                    Nenhum usuário encontrado.
+                                </div>
+                            </div>
+
+                            <!-- Paginação -->
+                            <div x-show="!loading && filteredUsers.length > 0" class="mt-4">
+                                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                                    <!-- Pagination Controls -->
+                                    <div class="d-flex align-items-center gap-2" x-show="itemsPerPage !== 'all'">
+                                        <button class="btn btn-sm btn-outline-primary" @click="prevPage()" :disabled="currentPage === 1">
+                                            <i class="bi bi-chevron-left"></i> Anterior
+                                        </button>
+                                        <small class="text-muted" x-text="`Página ${currentPage} de ${totalPages}`"></small>
+                                        <button class="btn btn-sm btn-outline-primary" @click="nextPage()" :disabled="currentPage === totalPages">
+                                            Próximo <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </div>
+
+                                    <!-- Items Per Page Select -->
+                                    <div class="d-flex align-items-center gap-2">
+                                        <label class="form-label mb-0"><small>Visualizar:</small></label>
+                                        <select class="form-select form-select-sm" style="width: auto;" @change="setItemsPerPage($event.target.value)" :value="itemsPerPage">
+                                            <option value="5">5</option>
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                            <option value="all">Todos</option>
+                                        </select>
+                                        <!-- Total Info -->
+                                        <small class="text-muted" x-text="`${filteredUsers.length} usuário(s)`"></small>
+                                    </div>
+
                                 </div>
                             </div>
                         </div>

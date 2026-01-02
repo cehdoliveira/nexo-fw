@@ -57,6 +57,9 @@ $dispatcher->add_route("GET", "/login(\.json|\.xml|\.html)?", "auth_controller:d
 $dispatcher->add_route("POST", "/login(\.json|\.xml|\.html)?", "auth_controller:login", null, $params);
 $dispatcher->add_route("GET", "/sair", "auth_controller:logout", null, $params);
 
+// Rotas de Usuários
+$dispatcher->add_route("GET", "/users/list", "site_controller:getUsers", null, $params);
+
 // Executar dispatcher e tratar falhas
 if (!$dispatcher->exec()) {
 	basic_redir($home_url);

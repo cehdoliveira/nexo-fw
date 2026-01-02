@@ -76,48 +76,68 @@ document.addEventListener("alpine:init", () => {
 
   // Users Controller
   Alpine.data("usersController", () => ({
-    users: [
-      {
-        id: 1,
-        name: "João Silva",
-        email: "joao@exemplo.com",
-        role: "Admin",
-        status: "Ativo",
-      },
-      {
-        id: 2,
-        name: "Maria Santos",
-        email: "maria@exemplo.com",
-        role: "Editor",
-        status: "Ativo",
-      },
-      {
-        id: 3,
-        name: "Pedro Costa",
-        email: "pedro@exemplo.com",
-        role: "Usuário",
-        status: "Inativo",
-      },
-      {
-        id: 4,
-        name: "Ana Oliveira",
-        email: "ana@exemplo.com",
-        role: "Editor",
-        status: "Ativo",
-      },
-      {
-        id: 5,
-        name: "Carlos Ferreira",
-        email: "carlos@exemplo.com",
-        role: "Usuário",
-        status: "Ativo",
-      },
-    ],
+    users: [],
     selectedUser: null,
     search: "",
+    loading: false,
+    currentPage: 1,
+    itemsPerPage: 5,
+    itemsPerPageOptions: [5, 20, 50, 100],
 
-    init() {
-      console.log("Users Controller inicializado");
+    async init() {
+      await this.loadUsers();
+      console.log(
+        "Users Controller inicializado com",
+        this.users.length,
+        "usuários"
+      );
+    },
+
+    async loadUsers() {
+      this.loading = true;
+      try {
+        const response = await fetch("/users/list");
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error(`Tipo de conteúdo inválido: ${contentType}`);
+        }
+
+        const listUsers = await response.json();
+
+        // Validar se é um array
+        if (!Array.isArray(listUsers)) {
+          throw new Error("Resposta não é um array válido");
+        }
+
+        // Mapear campos do backend para o formato esperado pelo frontend
+        this.users = listUsers.map((u) => ({
+          id: u.idx,
+          name: u.name,
+          email: u.mail,
+          cpf: u.cpf,
+          phone: u.phone,
+          login: u.login,
+          status: u.enabled === "yes" ? "Ativo" : "Inativo",
+          enabled: u.enabled,
+          genre: u.genre,
+          last_login: u.last_login,
+        }));
+        this.currentPage = 1;
+      } catch (error) {
+        console.error("Erro ao carregar usuários:", error);
+        Toast.fire({
+          icon: "error",
+          title: "Erro ao carregar usuários",
+          text: error.message,
+        });
+      } finally {
+        this.loading = false;
+      }
     },
 
     get filteredUsers() {
@@ -125,8 +145,44 @@ document.addEventListener("alpine:init", () => {
       return this.users.filter(
         (user) =>
           user.name.toLowerCase().includes(this.search.toLowerCase()) ||
-          user.email.toLowerCase().includes(this.search.toLowerCase())
+          user.email.toLowerCase().includes(this.search.toLowerCase()) ||
+          user.cpf.includes(this.search)
       );
+    },
+
+    get paginatedUsers() {
+      const filtered = this.filteredUsers;
+      if (this.itemsPerPage === "all") {
+        return filtered;
+      }
+      const itemsPerPage = parseInt(this.itemsPerPage);
+      const start = (this.currentPage - 1) * itemsPerPage;
+      return filtered.slice(start, start + itemsPerPage);
+    },
+
+    get totalPages() {
+      if (this.itemsPerPage === "all") {
+        return 1;
+      }
+      const itemsPerPage = parseInt(this.itemsPerPage);
+      return Math.ceil(this.filteredUsers.length / itemsPerPage);
+    },
+
+    nextPage() {
+      if (this.currentPage < this.totalPages) {
+        this.currentPage++;
+      }
+    },
+
+    prevPage() {
+      if (this.currentPage > 1) {
+        this.currentPage--;
+      }
+    },
+
+    setItemsPerPage(num) {
+      this.itemsPerPage = num;
+      this.currentPage = 1;
     },
 
     selectUser(userId) {
@@ -138,12 +194,16 @@ document.addEventListener("alpine:init", () => {
       await Swal.fire({
         title: user.name,
         html: `
-                    <div class="text-start">
-                        <p><strong>Email:</strong> ${user.email}</p>
-                        <p><strong>Função:</strong> ${user.role}</p>
-                        <p><strong>Status:</strong> ${user.status}</p>
-                    </div>
-                `,
+          <div class="text-start">
+            <p><strong>Email:</strong> ${user.email}</p>
+            <p><strong>CPF:</strong> ${user.cpf}</p>
+            <p><strong>Telefone:</strong> ${user.phone}</p>
+            <p><strong>Status:</strong> ${user.status}</p>
+            <p><strong>Último Acesso:</strong> ${this.formatDate(
+              user.last_login
+            )}</p>
+          </div>
+        `,
         icon: "info",
         confirmButtonText: "Fechar",
       });
@@ -178,6 +238,18 @@ document.addEventListener("alpine:init", () => {
           "success"
         );
       }
+    },
+
+    formatDate(dateString) {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return date.toLocaleDateString("pt-BR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     },
 
     getRoleBadgeClass(role) {
